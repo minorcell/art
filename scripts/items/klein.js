@@ -48,8 +48,8 @@ export default {
     const THREE = ctx.THREE;
     console.time('Klein');
 
-    const NU = 520;
-    const NV = 450;
+    const NU = 360;
+    const NV = 320;
     const P = [], C = [];
 
     for (let i = 0; i < NU; i++) {
@@ -61,7 +61,7 @@ export default {
         let [x, y, z] = kleinPoint(u, v);
 
         // Scale down to match rose size (~3-4 units)
-        x *= 0.22; y *= 0.22; z *= 0.22;
+        x *= 0.30; y *= 0.30; z *= 0.30;
 
         // Rotate -90° around X: stand the bottle upright (long axis Z → Y)
         const ty = z;        // Z becomes vertical
@@ -83,7 +83,7 @@ export default {
 
     const n = P.length / 3;
     const scat = ctx.scatterFrom(P, 3.0, 0.0);
-    const mesh = ctx.createSplatMesh(P, C, scat, 0.014);
+    const mesh = ctx.createSplatMesh(P, C, scat, 0.009);
     mesh.renderOrder = 10;
     mesh.material.depthWrite = false;
 
