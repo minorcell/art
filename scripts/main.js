@@ -70,12 +70,13 @@ function createGaussianTex(size = 128) {
   const h = size / 2;
   const g = ctx.createRadialGradient(h, h, 0, h, h, h);
   g.addColorStop(0.00, 'rgba(255,255,255,1)');
-  g.addColorStop(0.06, 'rgba(255,255,255,0.98)');
-  g.addColorStop(0.18, 'rgba(255,255,255,0.82)');
-  g.addColorStop(0.35, 'rgba(255,255,255,0.48)');
-  g.addColorStop(0.55, 'rgba(255,255,255,0.15)');
-  g.addColorStop(0.78, 'rgba(255,255,255,0.02)');
-  g.addColorStop(1.00, 'rgba(255,255,255,0)');
+  g.addColorStop(0.12, 'rgba(255,255,255,0.99)');
+  g.addColorStop(0.30, 'rgba(255,255,255,0.90)');
+  g.addColorStop(0.48, 'rgba(255,255,255,0.72)');
+  g.addColorStop(0.65, 'rgba(255,255,255,0.52)');
+  g.addColorStop(0.80, 'rgba(255,255,255,0.33)');
+  g.addColorStop(0.92, 'rgba(255,255,255,0.20)');
+  g.addColorStop(1.00, 'rgba(255,255,255,0.12)');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, size, size);
   const t = new THREE.CanvasTexture(c);
@@ -108,12 +109,12 @@ const $ = {
 // ═══════════════════════════════════════════════════════
 
 const CLR = {
-  P_BASE:   $.rgb(95, 6, 16),
-  P_DEEP:   $.rgb(160, 15, 32),
-  P_MID:    $.rgb(210, 28, 48),
-  P_HIGH:   $.rgb(228, 65, 82),
-  P_EDGE:   $.rgb(242, 125, 145),
-  P_TIP:    $.rgb(250, 180, 190),
+  P_BASE:   $.rgb(55, 3, 8),
+  P_DEEP:   $.rgb(128, 8, 22),
+  P_MID:    $.rgb(170, 18, 38),
+  P_HIGH:   $.rgb(195, 34, 52),
+  P_EDGE:   $.rgb(205, 52, 65),
+  P_TIP:    $.rgb(210, 72, 82),
   SEP_D:    $.rgb(26, 60, 24),
   SEP_L:    $.rgb(48, 98, 40),
   STM_D:    $.rgb(28, 68, 28),
@@ -126,15 +127,25 @@ const CLR = {
   LF_V:     $.rgb(28, 75, 30),
 };
 
-function petalColor(s, tAbs) {
+function petalColor(s, tAbs, depth) {
   let c;
-  if (s < 0.10)       c = $.lerp3(CLR.P_BASE, CLR.P_DEEP, s/0.10);
-  else if (s < 0.40)  c = $.lerp3(CLR.P_DEEP, CLR.P_MID,  (s-0.10)/0.30);
-  else if (s < 0.72)  c = $.lerp3(CLR.P_MID,  CLR.P_HIGH, (s-0.40)/0.32);
-  else if (s < 0.90)  c = $.lerp3(CLR.P_HIGH, CLR.P_EDGE, (s-0.72)/0.18);
-  else                c = $.lerp3(CLR.P_EDGE, CLR.P_TIP,  (s-0.90)/0.10);
-  const sat = 1 - tAbs*0.45, light = tAbs*0.20;
-  return [Math.min(1,c[0]*sat+light*0.16), Math.min(1,c[1]*sat+light*0.10), Math.min(1,c[2]*sat+light*0.10)];
+  // Real rose: dark base → rich crimson body → subtle edge darkening (not pink)
+  if (s < 0.06)       c = $.lerp3(CLR.P_BASE, CLR.P_DEEP, s/0.06);
+  else if (s < 0.35)  c = $.lerp3(CLR.P_DEEP, CLR.P_MID,  (s-0.06)/0.29);
+  else if (s < 0.68)  c = $.lerp3(CLR.P_MID,  CLR.P_HIGH, (s-0.35)/0.33);
+  else if (s < 0.88)  c = $.lerp3(CLR.P_HIGH, CLR.P_EDGE, (s-0.68)/0.20);
+  else                c = $.lerp3(CLR.P_EDGE, CLR.P_TIP,  (s-0.88)/0.12);
+  // Subtle edge darkening (real roses have darker rim, not lighter)
+  const edgeDarken = tAbs > 0.75 ? (tAbs - 0.75) / 0.25 * 0.06 : 0;
+  const sat = 1 - tAbs*0.22 - edgeDarken;
+  const light = tAbs*0.08;
+  const d = depth != null ? depth : 0.5;
+  const scale = 1.20 - d * 0.32;
+  return [
+    Math.min(1, (c[0]*sat+light*0.12) * scale),
+    Math.min(1, (c[1]*sat+light*0.08) * scale),
+    Math.min(1, (c[2]*sat+light*0.08) * scale),
+  ];
 }
 
 // ═══════════════════════════════════════════════════════
@@ -142,10 +153,10 @@ function petalColor(s, tAbs) {
 // ═══════════════════════════════════════════════════════
 
 function petalWidth(s) {
-  return Math.pow(s, 0.45) * Math.pow(1 - s, 0.28) * 2.4;
+  return Math.pow(s, 0.40) * Math.pow(1 - s, 0.32) * 2.55;
 }
 
-function generatePetal(len, cup, curl, resS, resT) {
+function generatePetal(len, cup, curl, resS, resT, depth) {
   const pos = [], col = [];
   for (let i = 0; i <= resS; i++) {
     const s = i / resS;
@@ -158,8 +169,12 @@ function generatePetal(len, cup, curl, resS, resT) {
       const cz = -cup * (1 - ta) * Math.pow(s, 0.55);
       const ec = curl * 0.25 * Math.pow(ta, 3.5) * s;
       const tc = -curl * 0.50 * Math.pow(s, 2.7) * (1 - ta * 0.35);
-      pos.push(lx, ly, cz + ec + tc);
-      const cl = petalColor(s, ta);
+      // Edge ruffling for organic irregularity
+      const ruffle = 0.007 * Math.sin(s * Math.PI * 9.5 + t * 5.0) * ta * ta * s * (1 + curl * 1.8);
+      // Subtle center crease line
+      const crease = -0.005 * (1 - ta * ta) * Math.pow(s, 0.45) * (1 - Math.pow(1 - s, 0.45));
+      pos.push(lx, ly, cz + ec + tc + ruffle + crease);
+      const cl = petalColor(s, ta, depth);
       col.push(cl[0], cl[1], cl[2]);
     }
   }
@@ -171,31 +186,33 @@ function generatePetal(len, cup, curl, resS, resT) {
 // ═══════════════════════════════════════════════════════
 
 const LAYERS_BUD = [
-  [  9, 0.55, 0.010, 0.24, 0.02, 0.42, 78, 60],
-  [ 11, 0.62, 0.025, 0.26, 0.04, 0.37, 84, 64],
-  [ 14, 0.72, 0.05,  0.28, 0.06, 0.30, 88, 68],
-  [ 18, 0.85, 0.09,  0.28, 0.08, 0.22, 88, 68],
-  [ 20, 0.95, 0.14,  0.26, 0.10, 0.14, 82, 64],
-  [ 18, 1.05, 0.22,  0.20, 0.13, 0.06, 74, 60],
-  [ 12, 1.10, 0.32,  0.12, 0.15, -0.02, 64, 52],
+  [  9, 0.55, 0.010, 0.24, 0.02, 0.42, 128, 100],
+  [ 11, 0.62, 0.025, 0.26, 0.04, 0.37, 136, 108],
+  [ 14, 0.72, 0.05,  0.28, 0.06, 0.30, 144, 114],
+  [ 18, 0.85, 0.09,  0.28, 0.08, 0.22, 144, 114],
+  [ 20, 0.95, 0.14,  0.26, 0.10, 0.14, 134, 106],
+  [ 18, 1.05, 0.22,  0.20, 0.13, 0.06, 122, 98],
+  [ 12, 1.10, 0.32,  0.12, 0.15, -0.02, 108, 86],
 ];
 
 const LAYERS_BLOOM = [
-  [  9, 0.55, 0.04,  0.17, 0.12, 0.42, 78, 60],
-  [ 11, 0.62, 0.10,  0.18, 0.16, 0.37, 84, 64],
-  [ 14, 0.72, 0.18,  0.20, 0.22, 0.30, 88, 68],
-  [ 18, 0.85, 0.30,  0.22, 0.28, 0.21, 88, 68],
-  [ 20, 0.95, 0.44,  0.23, 0.34, 0.12, 82, 64],
-  [ 18, 1.05, 0.62,  0.18, 0.40, 0.03, 74, 60],
-  [ 12, 1.10, 0.88,  0.10, 0.46, -0.08, 64, 52],
+  [  9, 0.55, 0.04,  0.17, 0.12, 0.42, 128, 100],
+  [ 11, 0.62, 0.10,  0.18, 0.16, 0.37, 136, 108],
+  [ 14, 0.72, 0.18,  0.20, 0.22, 0.30, 144, 114],
+  [ 18, 0.85, 0.30,  0.22, 0.28, 0.21, 144, 114],
+  [ 20, 0.95, 0.44,  0.23, 0.34, 0.12, 134, 106],
+  [ 18, 1.05, 0.62,  0.18, 0.40, 0.03, 122, 98],
+  [ 12, 1.10, 0.88,  0.10, 0.46, -0.08, 108, 86],
 ];
 
 function generateRose(layers) {
   const allPos = [], allCol = [];
   const GA = Math.PI * (3 - Math.sqrt(5));
   let pi = 0;
+  let li = 0;
 
   for (const [count, len, tilt, cup, curl, h, rS, rT] of layers) {
+    const depth = li / (layers.length - 1);
     const subC = Math.max(1, Math.floor(count / 4));
     const perS = Math.ceil(count / subC);
     let placed = 0;
@@ -207,7 +224,8 @@ function generateRose(layers) {
 
       for (let p = 0; p < nSub; p++) {
         const angle = pi * GA;
-        const petal = generatePetal(len, cup, curl, rS, rT);
+        const sizeVar = 0.82 + mulberry32(pi * 7 + 5) * 0.36;
+        const petal = generatePetal(len * sizeVar, cup, curl, rS, rT, depth);
 
         const tv = st + (mulberry32(pi * 7 + 1) - 0.5) * 0.07;
         const tw = (mulberry32(pi * 7 + 2) - 0.5) * 0.09;
@@ -223,6 +241,7 @@ function generateRose(layers) {
         pi++; placed++;
       }
     }
+    li++;
   }
   return { positions: allPos, colors: allCol };
 }
@@ -234,22 +253,22 @@ function generateRose(layers) {
 function generateSepals(n = 5) {
   const pos = [], col = [];
   for (let i = 0; i < n; i++) {
-    const angle = (i/n)*Math.PI*2 + (mulberry32(i*13+5)-0.5)*0.3;
-    const len = 0.48 + mulberry32(i*13+6)*0.22;
-    const rS = 46, rT = 26;
+    const angle = (i/n)*Math.PI*2 + (mulberry32(i*13+5)-0.5)*0.22;
+    const len = 0.50 + mulberry32(i*13+6)*0.18;
+    const rS = 50, rT = 28;
     for (let si = 0; si <= rS; si++) {
       const s = si/rS;
-      const w = (1-s)*0.10 + s*0.014;
-      const ly = -s*len;
+      const w = (1-s)*0.08 + s*0.010;
+      const ly = -s*len - 0.03;
       for (let ti = 0; ti <= rT; ti++) {
         const t = (ti/rT)*2-1;
-        let rx = t*w, ry = ly, rz = -0.007*(1-Math.abs(t))*s;
-        [rx,ry,rz] = $.rotX(rx,ry,rz, 2.15);
+        let rx = t*w, ry = ly, rz = -0.008*(1-Math.abs(t))*Math.pow(s, 0.55);
+        [rx,ry,rz] = $.rotX(rx,ry,rz, 2.30);
         [rx,ry,rz] = $.rotY(rx,ry,rz, angle);
-        rx += (mulberry32(i*1000+si*rT+ti)-0.5)*0.006;
-        rz += (mulberry32(i*1000+si*rT+ti+1)-0.5)*0.006;
-        pos.push(rx, ry-0.06, rz);
-        const cl = $.lerp3(CLR.SEP_D, CLR.SEP_L, mulberry32(i*2000+si*rT+ti)*0.35+s*0.65);
+        rx += (mulberry32(i*1000+si*rT+ti)-0.5)*0.005;
+        rz += (mulberry32(i*1000+si*rT+ti+1)-0.5)*0.005;
+        pos.push(rx, ry-0.14, rz);
+        const cl = $.lerp3(CLR.SEP_D, CLR.SEP_L, mulberry32(i*2000+si*rT+ti)*0.28+s*0.72);
         col.push(cl[0], cl[1], cl[2]);
       }
     }
@@ -275,23 +294,30 @@ function generateStem(h = 2.2, thick = 0.042, n = 8000) {
 
 function generateThorns(sh = 2.2) {
   const pos = [], col = [];
-  const count = 9;
+  const count = 11;
   for (let i = 0; i < count; i++) {
-    const t = 0.06 + (i/(count-1))*0.78;
+    const t = 0.04 + (i/(count-1))*0.84;
     const y = -t*sh;
-    const angle = (i*2.4)%(Math.PI*2);
+    const angle = (i*2.4 + mulberry32(i*31)*0.45) % (Math.PI*2);
     const sx = Math.sin(t*1.7)*0.065, sz = Math.cos(t*1.35)*0.045;
     const r0 = 0.042*(1-t*0.38);
     const bx = sx+Math.cos(angle)*r0, bz = sz+Math.sin(angle)*r0;
-    const tl = 0.06+mulberry32(i*17)*0.09;
-    const rs = 20;
+    const tl = 0.035 + mulberry32(i*17)*0.10;
+    const rs = 28;
+    const droop = 0.22 + mulberry32(i*41)*0.18;
     for (let j = 0; j <= rs; j++) {
       const s = j/rs;
-      const rr = (1-s)*0.010;
+      const rr = (1-s)*0.012 * Math.pow(1-s, 0.50);
       const d = s*tl;
       const ta = mulberry32(i*100+j)*Math.PI*2;
-      pos.push(bx+Math.cos(angle)*d+Math.cos(ta)*rr, y, bz+Math.sin(angle)*d+Math.sin(ta)*rr);
-      const cl = $.lerp3(CLR.TH_B, CLR.TH_T, s);
+      const thornX = bx + Math.cos(angle)*d;
+      const thornY = y - d*droop;
+      const thornZ = bz + Math.sin(angle)*d;
+      pos.push(thornX+Math.cos(ta)*rr, thornY, thornZ+Math.sin(ta)*rr);
+      const baseRust = [0.52, 0.20, 0.10];
+      const cl = s < 0.35
+        ? $.lerp3(CLR.TH_B, baseRust, s/0.35)
+        : $.lerp3(baseRust, CLR.TH_T, (s-0.35)/0.65);
       col.push(cl[0], cl[1], cl[2]);
     }
   }
@@ -300,45 +326,63 @@ function generateThorns(sh = 2.2) {
 
 function generateLeaf(length, width) {
   const pos = [], col = [];
-  const rL = Math.floor(length*58), rW = Math.floor(width*48);
+  const rL = Math.floor(length*132), rW = Math.floor(width*92);
   for (let i = 0; i <= rL; i++) {
     const s = i/rL;
-    const w = Math.sin(Math.PI*Math.pow(s, 0.48))*width;
+    // Tapered leaf silhouette
+    const leafShape = Math.pow(Math.sin(Math.PI * s), 0.50);
+    const w = leafShape * width * 1.22;
     const ly = s*length;
     for (let j = 0; j <= rW; j++) {
       const t = (j/rW)*2-1, ta = Math.abs(t);
       const lx = t*w;
-      const z = -0.014*ta + 0.004*Math.sin(Math.PI*s*15)*(1-ta);
+      // Strong midrib V-crease: deepest at center, fades at base and tip
+      const midribFade = (1 - Math.pow(1-s, 0.22)) * (1 - Math.pow(s, 0.30));
+      const midrib = -0.042 * ta * Math.pow(1-ta, 0.50) * midribFade;
+      // Cross-section curl: edges fold downward
+      const crossCurl = -0.028 * ta*ta * (1 - Math.pow(1-s, 0.32));
+      // Length-wise downward curvature
+      const lengthCurl = -0.18 * Math.pow(s, 1.50) * length;
+      // Margin undulation
+      const marginWave = 0.016 * Math.sin(s*Math.PI*7.2 + ta*3.0) * ta*ta * s;
+      // Fine surface texture
+      const microTex = 0.004 * Math.sin(s*Math.PI*21) * (1-ta) * s;
+      const z = midrib + crossCurl + lengthCurl + marginWave + microTex;
       pos.push(lx, ly, z);
+      // Color with midrib and lateral vein accents
       let cl;
-      if (ta<0.07 && s<0.90)      cl = $.lerp3(CLR.LF_V, CLR.LF_M, ta/0.07);
-      else if (s<0.08)            cl = $.lerp3(CLR.LF_D, CLR.LF_M, s/0.08);
-      else if (s>0.82)            cl = $.lerp3(CLR.LF_M, CLR.LF_L, (s-0.82)/0.18);
-      else                        cl = $.lerp3(CLR.LF_M, CLR.LF_L, mulberry32(i*rW+j)*0.32);
+      const nearMidrib = ta < 0.038;
+      const lateralVein = Math.abs(ta - 0.30) < 0.032 && s < 0.80;
+      if (nearMidrib && s < 0.86)      cl = $.lerp3(CLR.LF_V, CLR.LF_M, ta/0.038);
+      else if (s < 0.05)                cl = $.lerp3(CLR.LF_D, CLR.LF_M, s/0.05);
+      else if (s > 0.84)                cl = $.lerp3(CLR.LF_M, CLR.LF_L, (s-0.84)/0.16);
+      else if (lateralVein)             cl = $.lerp3(CLR.LF_V, CLR.LF_M, 0.22+mulberry32(i*rW+j)*0.28);
+      else                              cl = $.lerp3(CLR.LF_M, CLR.LF_L, mulberry32(i*rW+j)*0.38);
       col.push(cl[0], cl[1], cl[2]);
     }
   }
   return { positions: pos, colors: col };
 }
 
-function generateLeavesOnStem(stH = 2.2) {
+function generateLeavesOnStem(stH = 2.2, yOffset = 0) {
   const allPos = [], allCol = [];
   const defs = [
-    { ay: 0.16, a: 0.12,          l: 0.78, w: 0.26, tilt: 0.52 },
-    { ay: 0.50, a: Math.PI*0.58,  l: 1.00, w: 0.32, tilt: 0.42 },
-    { ay: 0.95, a: Math.PI*1.32,  l: 0.85, w: 0.28, tilt: 0.48 },
-    { ay: 1.45, a: Math.PI*0.30,  l: 0.65, w: 0.22, tilt: 0.58 },
+    { ay: 0.30, a: 0.18,          l: 0.70, w: 0.23, tilt: 0.56 },
+    { ay: 0.62, a: Math.PI*0.56,  l: 0.92, w: 0.30, tilt: 0.44 },
+    { ay: 1.00, a: Math.PI*1.28,  l: 0.80, w: 0.26, tilt: 0.50 },
+    { ay: 1.46, a: Math.PI*0.34,  l: 0.58, w: 0.20, tilt: 0.62 },
   ];
   for (const d of defs) {
     const leaf = generateLeaf(d.l, d.w);
-    const sy = Math.sin(d.ay/stH*1.7)*0.065;
-    const sz = Math.cos(d.ay/stH*1.35)*0.045;
-    const sr = 0.042*(1-d.ay/stH*0.38) + 0.028;
+    const adjAy = d.ay + yOffset;
+    const sy = Math.sin(adjAy/stH*1.7)*0.065;
+    const sz = Math.cos(adjAy/stH*1.35)*0.045;
+    const sr = 0.042*(1-adjAy/stH*0.38) + 0.030;
     for (let k = 0; k < leaf.positions.length; k += 3) {
       let x = leaf.positions[k], y = leaf.positions[k+1], z = leaf.positions[k+2];
       [x,y,z] = $.rotX(x,y,z, d.tilt);
       [x,y,z] = $.rotY(x,y,z, d.a);
-      y -= d.ay; x += sy+Math.sin(d.a)*sr; z += sz+Math.cos(d.a)*sr;
+      y -= adjAy; x += sy+Math.sin(d.a)*sr; z += sz+Math.cos(d.a)*sr;
       allPos.push(x, y, z);
       allCol.push(leaf.colors[k], leaf.colors[k+1], leaf.colors[k+2]);
     }
@@ -418,9 +462,9 @@ const FRAG = /* glsl */`
   uniform sampler2D uTex;
   void main() {
     vec4 tex = texture2D(uTex, gl_PointCoord);
-    if (tex.a < 0.075) discard;
-    float brightness = 0.72 + 0.28 * tex.r;
-    gl_FragColor = vec4(vColor * brightness, min(1.0, tex.a * 1.30));
+    float alpha = tex.a;
+    if (alpha < 0.02) discard;
+    gl_FragColor = vec4(vColor, alpha);
   }
 `;
 
@@ -458,6 +502,7 @@ const sepalData     = generateSepals();
 const stemData      = generateStem();
 const thornData     = generateThorns();
 const leafData      = generateLeavesOnStem();
+const leafBloomData = generateLeavesOnStem(2.2, 0.26);
 const bokehData     = createBokeh();
 
 const flowerBudPos   = [...roseBudData.positions,   ...sepalData.positions];
@@ -476,11 +521,12 @@ const flowerScattArr = new Float32Array(flowerScatter);
 const stemFinalArr   = new Float32Array(stemAllPos);
 const stemScattArr   = new Float32Array(stemScatter);
 const leafFinalArr   = new Float32Array(leafData.positions);
+const leafBloomArr   = new Float32Array(leafBloomData.positions);
 const leafScattArr   = new Float32Array(leafScatter);
 
-const flowerMesh = createSplatMesh(flowerBudPos, flowerCols, flowerScatter, 0.013);
+const flowerMesh = createSplatMesh(flowerBudPos, flowerCols, flowerScatter, 0.016);
 const stemMesh   = createSplatMesh(stemAllPos, stemAllCol, stemScatter, 0.016);
-const leafMesh   = createSplatMesh(leafData.positions, leafData.colors, leafScatter, 0.012);
+const leafMesh   = createSplatMesh(leafData.positions, leafData.colors, leafScatter, 0.016);
 
 const bokehGeo = new THREE.BufferGeometry();
 bokehGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(bokehData.positions), 3));
@@ -541,6 +587,14 @@ function swapFlowerToBloom() {
   geo.attributes.scatterPos.array.set(flowerBudArr);
   geo.attributes.scatterPos.needsUpdate = true;
   flowerMesh.material.uniforms.uProgress.value = 0;
+
+  // Animate leaves downward as petals expand to avoid clipping
+  const lg = leafMesh.geometry;
+  lg.attributes.scatterPos.array.set(leafFinalArr);
+  lg.attributes.scatterPos.needsUpdate = true;
+  lg.attributes.position.array.set(leafBloomArr);
+  lg.attributes.position.needsUpdate = true;
+  leafMesh.material.uniforms.uProgress.value = 0;
 }
 
 function resetAllToScattered() {
@@ -550,7 +604,7 @@ function resetAllToScattered() {
   fg.attributes.scatterPos.array.set(flowerScattArr);
   fg.attributes.scatterPos.needsUpdate = true;
   flowerMesh.material.uniforms.uProgress.value = 0;
-  flowerMesh.material.uniforms.uPointSize.value = 0.013;
+  flowerMesh.material.uniforms.uPointSize.value = 0.016;
 
   const sg = stemMesh.geometry;
   sg.attributes.position.array.set(stemFinalArr);
@@ -566,7 +620,7 @@ function resetAllToScattered() {
   lg.attributes.scatterPos.array.set(leafScattArr);
   lg.attributes.scatterPos.needsUpdate = true;
   leafMesh.material.uniforms.uProgress.value = 0;
-  leafMesh.material.uniforms.uPointSize.value = 0.012;
+  leafMesh.material.uniforms.uPointSize.value = 0.016;
 
   phase = PHASE.SCATTERED;
   formationDone = false;
@@ -622,6 +676,7 @@ function animate(timestamp) {
     const p = easeInOutCubic(raw);
 
     flowerMesh.material.uniforms.uProgress.value = p;
+    leafMesh.material.uniforms.uProgress.value   = p;
 
     if (raw >= 1.0) {
       phase = PHASE.COMPLETE;
@@ -631,9 +686,9 @@ function animate(timestamp) {
 
   if (formationDone) {
     const br = 1 + Math.sin(t*0.65)*0.018 + Math.sin(t*1.2)*0.010;
-    flowerMesh.material.uniforms.uPointSize.value = 0.013 * br;
+    flowerMesh.material.uniforms.uPointSize.value = 0.016 * br;
     stemMesh.material.uniforms.uPointSize.value   = 0.016 * br;
-    leafMesh.material.uniforms.uPointSize.value   = 0.012 * br;
+    leafMesh.material.uniforms.uPointSize.value   = 0.016 * br;
 
     stemMesh.material.uniforms.uProgress.value = 1.0;
     leafMesh.material.uniforms.uProgress.value = 1.0;
