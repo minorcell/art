@@ -61,7 +61,7 @@ export default {
         let [x, y, z] = kleinPoint(u, v);
 
         // Scale down to match rose size (~3-4 units)
-        x *= 0.30; y *= 0.30; z *= 0.30;
+        x *= 0.22; y *= 0.22; z *= 0.22;
 
         // Rotate -90° around X: stand the bottle upright (long axis Z → Y)
         const ty = z;        // Z becomes vertical
