@@ -31,19 +31,13 @@ function kleinPoint(u, v) {
   return [x, y, z];
 }
 
-function hslToRgb(h, s, l) {
-  h = ((h % 360) + 360) % 360;
-  const c = (1 - Math.abs(2 * l - 1)) * s;
-  const x = c * (1 - Math.abs((h / 60) % 2 - 1));
-  const m = l - c / 2;
-  let r, g, b;
-  if (h < 60)      { r = c; g = x; b = 0; }
-  else if (h < 120) { r = x; g = c; b = 0; }
-  else if (h < 180) { r = 0; g = c; b = x; }
-  else if (h < 240) { r = 0; g = x; b = c; }
-  else if (h < 300) { r = x; g = 0; b = c; }
-  else              { r = c; g = 0; b = x; }
-  return [r + m, g + m, b + m];
+// Klein Blue: #002FA7
+const KB = [0 / 255, 47 / 255, 167 / 255];
+
+function kleinBlue(seed) {
+  // Subtle variation around Klein Blue for depth/texture
+  const v = 0.85 + (seed - 0.5) * 0.30;
+  return [KB[0] * v, KB[1] * v, KB[2] * v];
 }
 
 export default {
@@ -82,11 +76,7 @@ export default {
 
         P.push(x, y, z);
 
-        // Cool palette: blue at bottom → purple at top, hue varies with u
-        const hue = 215 + (u / (Math.PI * 2)) * 50 + (y + 5) * 3;
-        const sat = 0.55 + 0.35 * Math.sin(v);
-        const light = 0.24 + 0.30 * ((y + 6) / 12);
-        const [r, g, b] = hslToRgb(hue, sat, Math.min(0.82, light));
+        const [r, g, b] = kleinBlue(Math.random());
         C.push(r, g, b);
       }
     }
@@ -95,6 +85,8 @@ export default {
     const scat = ctx.scatterFrom(P, 3.0, 0.0);
     const mesh = ctx.createSplatMesh(P, C, scat, 0.014);
     mesh.renderOrder = 10;
+    // Let neck show through body at self-intersection
+    mesh.material.depthWrite = false;
 
     const amb = new THREE.AmbientLight(0x1a1a3a, 2.2);
     const key = new THREE.DirectionalLight(0xccddff, 5); key.position.set(4, 5, 4);

@@ -161,8 +161,8 @@ export class Gallery {
   constructor() {
     // ── Scene ──
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x06060c);
-    this.scene.fog = new THREE.Fog(0x06060c, 7, 28);
+    this.scene.background = new THREE.Color(0x000000);
+    this.scene.fog = new THREE.Fog(0x000000, 7, 28);
 
     // ── Camera ──
     this.camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 50);
@@ -198,9 +198,6 @@ export class Gallery {
     // ── Shared Resources ──
     this.gTex = createGaussianTex();
 
-    // ── Environment (always visible) ──
-    this._createEnvironment();
-
     // ── Item Registry ──
     this._items = new Map();       // id → itemDef
     this._instances = new Map();   // id → instance (lazy)
@@ -227,53 +224,6 @@ export class Gallery {
     // Kick off render loop (will idle until start() is called)
     this._animate = this._animate.bind(this);
     requestAnimationFrame(this._animate);
-  }
-
-  // ─────────────────────────────────────────────
-  // ENVIRONMENT
-  // ─────────────────────────────────────────────
-
-  _createEnvironment() {
-    // Bokeh particles — distant light specks
-    const bN = 2000;
-    const bPos = new Float32Array(bN * 3);
-    const bCol = new Float32Array(bN * 3);
-    for (let i = 0; i < bN; i++) {
-      const th = mulberry32(i*5)*Math.PI*2;
-      const ph = Math.acos(2*mulberry32(i*5+1)-1)*0.52;
-      const r = 3.8+mulberry32(i*5+2)*9;
-      bPos[i*3]=Math.cos(th)*Math.sin(ph)*r;
-      bPos[i*3+1]=Math.cos(ph)*r+0.7;
-      bPos[i*3+2]=Math.sin(th)*Math.sin(ph)*r;
-      const b = 0.03+mulberry32(i*5+3)*0.07;
-      bCol[i*3]=b; bCol[i*3+1]=b; bCol[i*3+2]=b*1.35;
-    }
-    const bGeo = new THREE.BufferGeometry();
-    bGeo.setAttribute('position', new THREE.BufferAttribute(bPos, 3));
-    bGeo.setAttribute('color', new THREE.BufferAttribute(bCol, 3));
-    this._bokehMesh = new THREE.Points(bGeo, new THREE.PointsMaterial({
-      size: 0.025, map: this.gTex, vertexColors: true,
-      blending: THREE.NormalBlending, depthWrite: false, depthTest: true, transparent: true,
-    }));
-    this._bokehMesh.renderOrder = 0;
-
-    // Ground particles — dark disc beneath
-    const gN = 3000;
-    const gP = new Float32Array(gN*3);
-    for (let i = 0; i < gN; i++) {
-      const a = mulberry32(i)*Math.PI*2;
-      const r = Math.sqrt(mulberry32(i+1))*3.0;
-      gP[i*3]=Math.cos(a)*r; gP[i*3+1]=-2.38+mulberry32(i+2)*0.04; gP[i*3+2]=Math.sin(a)*r;
-    }
-    const gGeo = new THREE.BufferGeometry();
-    gGeo.setAttribute('position', new THREE.BufferAttribute(gP, 3));
-    this._groundMesh = new THREE.Points(gGeo, new THREE.PointsMaterial({
-      size: 0.07, map: this.gTex, color: 0x100e08,
-      blending: THREE.NormalBlending, depthWrite: true, transparent: true, opacity: 0.45,
-    }));
-    this._groundMesh.renderOrder = -5;
-
-    this.scene.add(this._groundMesh, this._bokehMesh);
   }
 
   // ─────────────────────────────────────────────
