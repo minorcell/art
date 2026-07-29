@@ -1,0 +1,5 @@
+:root { --bg: #050508; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: var(--bg); overflow: hidden; font-family: 'Georgia', serif; cursor: grab; }
+body:active, body.dragging { cursor: grabbing; }
+canvas { display: block; }
