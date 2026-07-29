@@ -134,15 +134,18 @@ export default {
     legBR.mesh.position.set( 2*S, -4*S, -3*S);
 
     const allMeshes = [headMesh, bodyMesh, legFL.mesh, legFR.mesh, legBL.mesh, legBR.mesh];
-    const pairA = [legFL, legBR];   // move together
-    const pairB = [legFR, legBL];   // move opposite
+    const pairA = [legFL, legBR];
+    const pairB = [legFR, legBL];
 
-    // ── Flat arrays for explosion scatter ──
+    // ── Flat arrays for explosion + scatter regen ──
+    const _sf = ctx.scatterFrom;
     const allOrigPos = [];
     const allOrigCol = [];
+    const meshOrigPos = []; // per-mesh original position arrays
     for (const m of allMeshes) {
       const pa = m.geometry.attributes.position.array;
       const ca = m.geometry.attributes.color.array;
+      meshOrigPos.push(new Float32Array(pa)); // snapshot
       for (let i = 0; i < pa.length; i++) allOrigPos.push(pa[i]);
       for (let i = 0; i < ca.length; i++) allOrigCol.push(ca[i]);
     }
@@ -290,13 +293,18 @@ export default {
 
     function resetAll() {
       let off = 0;
-      for (const m of allMeshes) {
+      for (let mi = 0; mi < allMeshes.length; mi++) {
+        const m = allMeshes[mi];
         const pa = m.geometry.attributes.position.array;
         const ca = m.geometry.attributes.color.array;
         for (let i = 0; i < pa.length; i++) pa[i] = origPosArr[off+i];
         for (let i = 0; i < ca.length; i++) ca[i] = origColArr[off/3*3+i];
         m.geometry.attributes.position.needsUpdate = true;
         m.geometry.attributes.color.needsUpdate = true;
+        // Regenerate scatter positions (overwritten by previous scatter-out)
+        const newScat = _sf(meshOrigPos[mi], 3.0, 0.0);
+        m.geometry.attributes.scatterPos.array.set(newScat);
+        m.geometry.attributes.scatterPos.needsUpdate = true;
         off += pa.length;
       }
       [legFL, legFR, legBL, legBR].forEach(l => { l.mesh.rotation.x = 0; });

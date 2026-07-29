@@ -85,8 +85,10 @@ export default {
     const scat = ctx.scatterFrom(P, 3.0, 0.0);
     const mesh = ctx.createSplatMesh(P, C, scat, 0.014);
     mesh.renderOrder = 10;
-    // Let neck show through body at self-intersection
     mesh.material.depthWrite = false;
+
+    const _sf = ctx.scatterFrom;
+    const _origPos = P;
 
     const amb = new THREE.AmbientLight(0x1a1a3a, 2.2);
     const key = new THREE.DirectionalLight(0xccddff, 5); key.position.set(4, 5, 4);
@@ -96,7 +98,11 @@ export default {
     const inst = {
       meshes: [mesh],
       lights: [amb, key, fil, rim],
-      onBeforeGather() { mesh.rotation.y = 0; mesh.scale.set(1, 1, 1); },
+      onBeforeGather() {
+        mesh.rotation.y = 0; mesh.scale.set(1, 1, 1);
+        mesh.geometry.attributes.scatterPos.array.set(_sf(_origPos, 3.0, 0.0));
+        mesh.geometry.attributes.scatterPos.needsUpdate = true;
+      },
       onGathered()      { mesh.rotation.y = 0; mesh.scale.set(1, 1, 1); },
       animate(t, dt)    { mesh.rotation.y += dt * 0.12; const s = 1 + Math.sin(t * 0.4) * 0.025; mesh.scale.set(s, s, s); },
       onScatterStart() {},

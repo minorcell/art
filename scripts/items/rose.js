@@ -378,6 +378,12 @@ export default {
     let phaseStartTime = 0;
     const warmBaseIntensity = 5;
 
+    // Save scatter function + params to regenerate on re-entry
+    const _sf = ctx.scatterFrom;
+    const _flowerBudPos = flowerBudPos;
+    const _stemAllPos = stemAllPos;
+    const _leafPos = leafData.positions;
+
     const inst = {
       meshes: [flowerMesh, stemMesh, leafMesh],
       lights,
@@ -388,6 +394,19 @@ export default {
         flowerMesh.geometry.attributes.position.needsUpdate = true;
         leafMesh.geometry.attributes.position.array.set(leafBudArr);
         leafMesh.geometry.attributes.position.needsUpdate = true;
+        // Regenerate scatter positions (overwritten by previous scatter-out)
+        flowerMesh.geometry.attributes.scatterPos.array.set(_sf(_flowerBudPos));
+        flowerMesh.geometry.attributes.scatterPos.needsUpdate = true;
+        stemMesh.geometry.attributes.scatterPos.array.set(_sf(_stemAllPos, 2.5, 0.0));
+        stemMesh.geometry.attributes.scatterPos.needsUpdate = true;
+        leafMesh.geometry.attributes.scatterPos.array.set(_sf(_leafPos, 2.8, -0.3));
+        leafMesh.geometry.attributes.scatterPos.needsUpdate = true;
+        // Reset mesh transforms
+        stemMesh.rotation.z = 0;
+        leafMesh.rotation.z = 0;
+        for (const m of inst.meshes) {
+          m.material.uniforms.uPointSize.value = 0.016;
+        }
         phase = 'bud_hold';
         phaseStartTime = 0;
       },
