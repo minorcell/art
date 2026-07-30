@@ -1,6 +1,59 @@
 // J-20-inspired twin-engine stealth fighter. The aircraft is a deterministic
 // Gaussian point cloud with X as wingspan, Y as height, and the nose at +Z.
 
+import { Item } from '../Item.js';
+import { makeBackground, createRandom, mix, pushPoint, addCloud } from '../bg-utils.js';
+
+function createJ20Background(ctx) {
+  const positions = [];
+  const colors = [];
+  const random = createRandom(0x6a3230);
+  const skyDark = [0.025, 0.08, 0.15];
+  const cloudDark = [0.26, 0.38, 0.48];
+  const cloudLight = [0.72, 0.84, 0.88];
+
+  for (let i = 0; i < 2800; i += 1) {
+    const x = -7.5 + random() * 15;
+    const y = 0.3 + random() * 5.2;
+    const z = -9.0 + random() * 3.0;
+    pushPoint(positions, colors, x, y, z, mix(skyDark, cloudDark, random() * 0.45), 0.035, random);
+  }
+
+  for (let i = 0; i < 18; i += 1) {
+    addCloud(
+      positions,
+      colors,
+      random,
+      [-5.6 + random() * 11.2, 1.2 + random() * 3.2, -6.0 + random() * 2.0],
+      [1.0 + random() * 1.4, 0.28 + random() * 0.48, 0.8 + random() * 1.2],
+      180,
+      cloudDark,
+      cloudLight,
+    );
+  }
+
+  for (let i = 0; i < 900; i += 1) {
+    const x = -8 + random() * 16;
+    const y = -0.5 + random() * 0.9;
+    const z = -7.8 + random() * 1.5;
+    pushPoint(positions, colors, x, y, z, mix([0.06, 0.16, 0.20], cloudDark, random() * 0.55), 0.03, random);
+  }
+
+  return makeBackground(ctx, positions, colors, {
+    pointSize: 0.036,
+    scatterRadius: 1.0,
+    centerY: 0.6,
+    animate(mesh, time) {
+      mesh.position.x = Math.sin(time * 0.045) * 0.22;
+      mesh.position.y = Math.sin(time * 0.032) * 0.08;
+    },
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+// J-20 FIGHTER MODEL
+// ═══════════════════════════════════════════════════════
+
 const COLOR = {
   skin:       [0.29, 0.32, 0.34],
   skinLight:  [0.40, 0.44, 0.46],
@@ -37,17 +90,6 @@ const FUSELAGE_PROFILE = [
 ];
 
 const TAU = Math.PI * 2;
-
-function createRandom(seed) {
-  let state = seed >>> 0;
-  return () => {
-    state += 0x6d2b79f5;
-    let value = state;
-    value = Math.imul(value ^ (value >>> 15), value | 1);
-    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
-    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 function lerp(a, b, t) {
   return a + (b - a) * t;
@@ -633,12 +675,20 @@ function toFloat32(values) {
   return values instanceof Float32Array ? values : new Float32Array(values);
 }
 
-export default {
-  id: 'j20',
-  name: 'J-20 Fighter',
-  autoRotate: false,
+export class J20 extends Item {
+  static id = 'j20';
+  static displayName = 'J-20 Fighter';
+  static autoRotate = false;
 
-  generate(ctx) {
+  // ── Background ──────────────────────────────
+
+  buildBackground(ctx) {
+    return createJ20Background(ctx);
+  }
+
+  // ── Model ───────────────────────────────────
+
+  buildModel(ctx) {
     const airframe = createCloud(0x4a323001);
     const canopy = createCloud(0x4a323002);
     const lights = createCloud(0x4a323003);
@@ -673,259 +723,253 @@ export default {
     const airflowColor = toFloat32(airflow.colors);
 
     const airframeMesh = ctx.createSplatMesh(
-      airframePos,
-      airframeColor,
-      ctx.scatterFrom(airframePos, 4.2, 0.55),
-      0.0065,
-    );
+      airframePos, airframeColor, ctx.scatterFrom(airframePos, 4.2, 0.55), 0.0065);
     airframeMesh.renderOrder = 10;
 
     const canopyMesh = ctx.createSplatMesh(
-      canopyPos,
-      canopyColor,
-      ctx.scatterFrom(canopyPos, 4.2, 0.55),
-      0.0072,
-    );
+      canopyPos, canopyColor, ctx.scatterFrom(canopyPos, 4.2, 0.55), 0.0072);
     canopyMesh.renderOrder = 11;
 
     const canardInstances = canards.map(({ cloud, side, hinge }) => {
       const position = toFloat32(cloud.positions);
       const color = toFloat32(cloud.colors);
       const mesh = ctx.createSplatMesh(
-        position,
-        color,
-        ctx.scatterFrom(position, 4.2, 0.55),
-        0.0067,
-      );
+        position, color, ctx.scatterFrom(position, 4.2, 0.55), 0.0067);
       mesh.renderOrder = 10;
       return { mesh, position, color, side, hinge };
     });
 
     const lightMesh = ctx.createSplatMesh(
-      lightPos,
-      lightColor,
-      ctx.scatterFrom(lightPos, 4.2, 0.55),
-      0.0088,
-    );
+      lightPos, lightColor, ctx.scatterFrom(lightPos, 4.2, 0.55), 0.0088);
     lightMesh.renderOrder = 12;
     lightMesh.material.depthWrite = false;
 
     const flameMesh = ctx.createSplatMesh(
-      flamePos,
-      flameBaseColor,
-      ctx.scatterFrom(flamePos, 4.2, 0.55),
-      0.0082,
-    );
+      flamePos, flameBaseColor, ctx.scatterFrom(flamePos, 4.2, 0.55), 0.0082);
     flameMesh.renderOrder = 12;
     flameMesh.material.depthWrite = false;
 
     const airflowMesh = ctx.createSplatMesh(
-      airflowPos,
-      airflowColor,
-      ctx.scatterFrom(airflowPos, 4.8, 0.55),
-      0.0060,
-    );
+      airflowPos, airflowColor, ctx.scatterFrom(airflowPos, 4.8, 0.55), 0.0060);
     airflowMesh.renderOrder = 8;
     airflowMesh.material.depthWrite = false;
 
-    const meshes = [
-      airframeMesh,
-      ...canardInstances.map(({ mesh }) => mesh),
-      canopyMesh,
-      lightMesh,
-      flameMesh,
-      airflowMesh,
-    ];
-    let flameTravel = 0;
-    let airflowTravel = 0;
+    // Store instance state
+    this._sf = ctx.scatterFrom;
+    this._airframeMesh = airframeMesh;
+    this._canopyMesh = canopyMesh;
+    this._canardInstances = canardInstances;
+    this._lightMesh = lightMesh;
+    this._flameMesh = flameMesh;
+    this._airflowMesh = airflowMesh;
+    this._airframePos = airframePos;
+    this._airframeColor = airframeColor;
+    this._canopyPos = canopyPos;
+    this._canopyColor = canopyColor;
+    this._lightPos = lightPos;
+    this._lightColor = lightColor;
+    this._flamePos = flamePos;
+    this._flameBaseColor = flameBaseColor;
+    this._airflowPos = airflowPos;
+    this._airflowColor = airflowColor;
+    this._airflowLayout = airflowLayout;
+    this._flameTravel = 0;
+    this._airflowTravel = 0;
 
-    function resetMesh(mesh, position, color) {
-      mesh.geometry.attributes.position.array.set(position);
-      mesh.geometry.attributes.position.needsUpdate = true;
-      mesh.geometry.attributes.scatterPos.array.set(ctx.scatterFrom(position, 4.2, 0.55));
-      mesh.geometry.attributes.scatterPos.needsUpdate = true;
-      mesh.geometry.attributes.color.array.set(color);
-      mesh.geometry.attributes.color.needsUpdate = true;
+    return {
+      meshes: [
+        airframeMesh,
+        ...canardInstances.map(({ mesh }) => mesh),
+        canopyMesh,
+        lightMesh,
+        flameMesh,
+        airflowMesh,
+      ],
+      lights: [],
+    };
+  }
+
+  // ── Lifecycle ───────────────────────────────
+
+  onBeforeGather() {
+    this._resetMesh(this._airframeMesh, this._airframePos, this._airframeColor);
+    for (const canard of this._canardInstances) {
+      this._resetMesh(canard.mesh, canard.position, canard.color);
+    }
+    this._resetMesh(this._canopyMesh, this._canopyPos, this._canopyColor);
+    this._resetMesh(this._lightMesh, this._lightPos, this._lightColor);
+    this._resetMesh(this._flameMesh, this._flamePos, this._flameBaseColor);
+    this._resetMesh(this._airflowMesh, this._airflowPos, this._airflowColor);
+    this._flameTravel = 0;
+    this._airflowTravel = 0;
+  }
+
+  animate(time, dt) {
+    const maneuver = this._maneuverAt(time);
+    const roll = Math.sin(time * 0.46) * 0.045 + maneuver.direction * maneuver.amount * 0.16;
+    const pitch = Math.sin(time * 0.31 + 0.7) * 0.020 + maneuver.amount * 0.055;
+    const yaw = Math.sin(time * 0.22) * 0.018;
+    const bob = Math.sin(time * 0.72) * 0.035 + maneuver.amount * 0.035;
+    const lateral = maneuver.direction * maneuver.amount * 0.055;
+    for (const mesh of this.meshes) {
+      mesh.position.set(lateral, bob, 0);
+      mesh.rotation.set(pitch, yaw, roll);
+    }
+
+    const canardAngle = maneuver.amount * -0.018;
+    this._updateCanard(this._canardInstances[0], canardAngle);
+    this._updateCanard(this._canardInstances[1], canardAngle);
+    this._updateFlames(dt);
+    this._updateAirflow(time, dt);
+  }
+
+  reset() {
+    this._flameTravel = 0;
+    this._airflowTravel = 0;
+    for (const canard of this._canardInstances) {
+      canard.mesh.geometry.attributes.position.array.set(canard.position);
+      canard.mesh.geometry.attributes.position.needsUpdate = true;
+    }
+    this._flameMesh.geometry.attributes.position.array.set(this._flamePos);
+    this._flameMesh.geometry.attributes.position.needsUpdate = true;
+    this._flameMesh.geometry.attributes.color.array.set(this._flameBaseColor);
+    this._flameMesh.geometry.attributes.color.needsUpdate = true;
+    this._airflowMesh.geometry.attributes.position.array.set(this._airflowPos);
+    this._airflowMesh.geometry.attributes.position.needsUpdate = true;
+    for (const mesh of this.meshes) {
       mesh.position.set(0, 0, 0);
       mesh.rotation.set(0, 0, 0);
       mesh.scale.set(1, 1, 1);
     }
+  }
 
-    function updateCanard(instance, angle) {
-      const positions = instance.mesh.geometry.attributes.position.array;
-      const [, hingeY, hingeZ] = instance.hinge;
-      const cosine = Math.cos(angle);
-      const sine = Math.sin(angle);
-      for (let i = 0; i < positions.length; i += 3) {
-        const dy = instance.position[i + 1] - hingeY;
-        const dz = instance.position[i + 2] - hingeZ;
-        positions[i] = instance.position[i];
-        positions[i + 1] = hingeY + dy * cosine - dz * sine;
-        positions[i + 2] = hingeZ + dy * sine + dz * cosine;
-      }
-      instance.mesh.geometry.attributes.position.needsUpdate = true;
+  // ── Internal helpers ────────────────────────
+
+  _resetMesh(mesh, position, color) {
+    mesh.geometry.attributes.position.array.set(position);
+    mesh.geometry.attributes.position.needsUpdate = true;
+    mesh.geometry.attributes.scatterPos.array.set(this._sf(position, 4.2, 0.55));
+    mesh.geometry.attributes.scatterPos.needsUpdate = true;
+    mesh.geometry.attributes.color.array.set(color);
+    mesh.geometry.attributes.color.needsUpdate = true;
+    mesh.position.set(0, 0, 0);
+    mesh.rotation.set(0, 0, 0);
+    mesh.scale.set(1, 1, 1);
+  }
+
+  _updateCanard(instance, angle) {
+    const positions = instance.mesh.geometry.attributes.position.array;
+    const [, hingeY, hingeZ] = instance.hinge;
+    const cosine = Math.cos(angle);
+    const sine = Math.sin(angle);
+    for (let i = 0; i < positions.length; i += 3) {
+      const dy = instance.position[i + 1] - hingeY;
+      const dz = instance.position[i + 2] - hingeZ;
+      positions[i] = instance.position[i];
+      positions[i + 1] = hingeY + dy * cosine - dz * sine;
+      positions[i + 2] = hingeZ + dy * sine + dz * cosine;
+    }
+    instance.mesh.geometry.attributes.position.needsUpdate = true;
+  }
+
+  _updateFlames(dt) {
+    this._flameTravel = (this._flameTravel + dt * 1.18) % 1;
+    const positions = this._flameMesh.geometry.attributes.position.array;
+    const colors = this._flameMesh.geometry.attributes.color.array;
+
+    for (let i = 0; i < positions.length; i += 3) {
+      const centerX = this._flamePos[i] < 0 ? -0.285 : 0.285;
+      const originalT = Math.min(1, Math.max(0, (-1.64 - this._flamePos[i + 2]) / 0.58));
+      const t = (originalT + this._flameTravel) % 1;
+      const originalMaxRadius = lerp(0.108, 0.020, originalT);
+      const dx = this._flamePos[i] - centerX;
+      const dy = (this._flamePos[i + 1] - 0.485) / 0.76;
+      const radiusRatio = Math.min(1, Math.hypot(dx, dy) / Math.max(0.001, originalMaxRadius));
+      const angle = Math.atan2(dy, dx);
+      const radius = lerp(0.108, 0.020, t) * radiusRatio;
+      positions[i] = centerX + radius * Math.cos(angle);
+      positions[i + 1] = 0.485 + radius * 0.76 * Math.sin(angle);
+      positions[i + 2] = lerp(-1.64, -2.22, t);
+
+      const color = mixColor(COLOR.flameBlue, COLOR.flameHot, Math.min(1, t * 1.35));
+      const shock = 0.76 + 0.24 * (0.5 + 0.5 * Math.cos(t * Math.PI * 10));
+      const particle = i / 3;
+      const identity = 0.58 + 0.42 * (0.5 + 0.5 * Math.sin(particle * 12.9898));
+      colors[i] = Math.min(1, color[0] * shock * identity);
+      colors[i + 1] = Math.min(1, color[1] * shock * identity);
+      colors[i + 2] = Math.min(1, color[2] * shock * identity);
+    }
+    this._flameMesh.geometry.attributes.position.needsUpdate = true;
+    this._flameMesh.geometry.attributes.color.needsUpdate = true;
+  }
+
+  _updateAirflow(time, dt) {
+    this._airflowTravel = (this._airflowTravel + dt * 0.72) % 5.3;
+    const positions = this._airflowMesh.geometry.attributes.position.array;
+    const bodyLimit = this._airflowLayout.bodyCount * 3;
+
+    for (let i = 0; i < bodyLimit; i += 3) {
+      const shiftedZ = this._airflowPos[i + 2] - this._airflowTravel;
+      const z = ((shiftedZ + 1.62) % 3.24 + 3.24) % 3.24 - 1.62;
+      const [baseWidth, baseLower, baseUpper] = fuselageAt(this._airflowPos[i + 2]);
+      const baseHalfHeight = (baseUpper - baseLower) * 0.5;
+      const baseCenterY = (baseUpper + baseLower) * 0.5;
+      const normalizedX = this._airflowPos[i] / Math.max(0.035, baseWidth);
+      const normalizedY = (this._airflowPos[i + 1] - baseCenterY) / Math.max(0.035, baseHalfHeight);
+      const angle = Math.atan2(normalizedY, normalizedX);
+      const surfaceOffset = 0.052 + 0.025 * (0.5 + 0.5 * Math.sin(i * 0.019));
+      const [halfWidth, lower, upper] = fuselageAt(z);
+      const halfHeight = (upper - lower) * 0.5;
+      const centerY = (upper + lower) * 0.5;
+      const wakeTwist = Math.max(0, -z - 1.10) * 0.10;
+      const flowAngle = angle + wakeTwist + Math.sin(time * 0.45 + i * 0.003) * 0.004;
+      const cosine = Math.cos(flowAngle);
+      const sine = Math.sin(flowAngle);
+      positions[i] = (halfWidth + surfaceOffset)
+        * Math.sign(cosine) * Math.pow(Math.abs(cosine), 0.82);
+      positions[i + 1] = centerY
+        + (halfHeight + surfaceOffset * 0.65)
+        * Math.sign(sine) * Math.pow(Math.abs(sine), 1.12);
+      positions[i + 2] = z;
     }
 
-    function updateFlames(dt) {
-      flameTravel = (flameTravel + dt * 1.18) % 1;
-      const positions = flameMesh.geometry.attributes.position.array;
-      const colors = flameMesh.geometry.attributes.color.array;
-
-      for (let i = 0; i < positions.length; i += 3) {
-        const centerX = flamePos[i] < 0 ? -0.285 : 0.285;
-        const originalT = Math.min(1, Math.max(0, (-1.64 - flamePos[i + 2]) / 0.58));
-        const t = (originalT + flameTravel) % 1;
-        const originalMaxRadius = lerp(0.108, 0.020, originalT);
-        const dx = flamePos[i] - centerX;
-        const dy = (flamePos[i + 1] - 0.485) / 0.76;
-        const radiusRatio = Math.min(1, Math.hypot(dx, dy) / Math.max(0.001, originalMaxRadius));
-        const angle = Math.atan2(dy, dx);
-        const radius = lerp(0.108, 0.020, t) * radiusRatio;
-        positions[i] = centerX + radius * Math.cos(angle);
-        positions[i + 1] = 0.485 + radius * 0.76 * Math.sin(angle);
-        positions[i + 2] = lerp(-1.64, -2.22, t);
-
-        const color = mixColor(COLOR.flameBlue, COLOR.flameHot, Math.min(1, t * 1.35));
-        const shock = 0.76 + 0.24 * (0.5 + 0.5 * Math.cos(t * Math.PI * 10));
-        const particle = i / 3;
-        const identity = 0.58 + 0.42 * (0.5 + 0.5 * Math.sin(particle * 12.9898));
-        colors[i] = Math.min(1, color[0] * shock * identity);
-        colors[i + 1] = Math.min(1, color[1] * shock * identity);
-        colors[i + 2] = Math.min(1, color[2] * shock * identity);
-      }
-      flameMesh.geometry.attributes.position.needsUpdate = true;
-      flameMesh.geometry.attributes.color.needsUpdate = true;
+    for (let i = bodyLimit; i < positions.length; i += 3) {
+      const side = this._airflowPos[i] < 0 ? -1 : 1;
+      const baseDx = Math.abs(this._airflowPos[i]) - 1.07;
+      const baseDy = this._airflowPos[i + 1] - 0.445;
+      const baseRadius = Math.hypot(baseDx, baseDy);
+      const baseAngle = Math.atan2(baseDy, baseDx);
+      const originalDistance = Math.max(0, -this._airflowPos[i + 2] - 0.38);
+      const distance = (originalDistance + this._airflowTravel * 0.78) % 2.52;
+      const downstream = distance / 2.52;
+      const originalDownstream = Math.min(1, originalDistance / 2.52);
+      const originalMaxRadius = lerp(0.025, 0.28, originalDownstream);
+      const radiusScale = baseRadius / Math.max(0.001, originalMaxRadius);
+      const radius = lerp(0.025, 0.30, downstream) * radiusScale;
+      const angle = baseAngle + this._airflowTravel * 3.8 + downstream * TAU * 1.4;
+      positions[i] = side * (1.07 + radius * Math.cos(angle));
+      positions[i + 1] = 0.445 + radius * Math.sin(angle);
+      positions[i + 2] = -0.38 - distance;
     }
+    this._airflowMesh.geometry.attributes.position.needsUpdate = true;
 
-    function updateAirflow(time, dt) {
-      airflowTravel = (airflowTravel + dt * 0.72) % 5.3;
-      const positions = airflowMesh.geometry.attributes.position.array;
-      const bodyLimit = airflowLayout.bodyCount * 3;
+    const drift = Math.sin(time * 0.55) * 0.002;
+    this._airflowMesh.position.x += drift;
+  }
 
-      for (let i = 0; i < bodyLimit; i += 3) {
-        const shiftedZ = airflowPos[i + 2] - airflowTravel;
-        const z = ((shiftedZ + 1.62) % 3.24 + 3.24) % 3.24 - 1.62;
-        const [baseWidth, baseLower, baseUpper] = fuselageAt(airflowPos[i + 2]);
-        const baseHalfHeight = (baseUpper - baseLower) * 0.5;
-        const baseCenterY = (baseUpper + baseLower) * 0.5;
-        const normalizedX = airflowPos[i] / Math.max(0.035, baseWidth);
-        const normalizedY = (airflowPos[i + 1] - baseCenterY) / Math.max(0.035, baseHalfHeight);
-        const angle = Math.atan2(normalizedY, normalizedX);
-        const surfaceOffset = 0.052 + 0.025 * (0.5 + 0.5 * Math.sin(i * 0.019));
-        const [halfWidth, lower, upper] = fuselageAt(z);
-        const halfHeight = (upper - lower) * 0.5;
-        const centerY = (upper + lower) * 0.5;
-        const wakeTwist = Math.max(0, -z - 1.10) * 0.10;
-        const flowAngle = angle + wakeTwist + Math.sin(time * 0.45 + i * 0.003) * 0.004;
-        const cosine = Math.cos(flowAngle);
-        const sine = Math.sin(flowAngle);
-        positions[i] = (halfWidth + surfaceOffset)
-          * Math.sign(cosine) * Math.pow(Math.abs(cosine), 0.82);
-        positions[i + 1] = centerY
-          + (halfHeight + surfaceOffset * 0.65)
-          * Math.sign(sine) * Math.pow(Math.abs(sine), 1.12);
-        positions[i + 2] = z;
-      }
-
-      for (let i = bodyLimit; i < positions.length; i += 3) {
-        const side = airflowPos[i] < 0 ? -1 : 1;
-        const baseDx = Math.abs(airflowPos[i]) - 1.07;
-        const baseDy = airflowPos[i + 1] - 0.445;
-        const baseRadius = Math.hypot(baseDx, baseDy);
-        const baseAngle = Math.atan2(baseDy, baseDx);
-        const originalDistance = Math.max(0, -airflowPos[i + 2] - 0.38);
-        const distance = (originalDistance + airflowTravel * 0.78) % 2.52;
-        const downstream = distance / 2.52;
-        const originalDownstream = Math.min(1, originalDistance / 2.52);
-        const originalMaxRadius = lerp(0.025, 0.28, originalDownstream);
-        const radiusScale = baseRadius / Math.max(0.001, originalMaxRadius);
-        const radius = lerp(0.025, 0.30, downstream) * radiusScale;
-        const angle = baseAngle + airflowTravel * 3.8 + downstream * TAU * 1.4;
-        positions[i] = side * (1.07 + radius * Math.cos(angle));
-        positions[i + 1] = 0.445 + radius * Math.sin(angle);
-        positions[i + 2] = -0.38 - distance;
-      }
-      airflowMesh.geometry.attributes.position.needsUpdate = true;
-
-      const drift = Math.sin(time * 0.55) * 0.002;
-      airflowMesh.position.x += drift;
+  _maneuverAt(time) {
+    const cycleDuration = 10.5;
+    const eventStart = 6.1;
+    const eventDuration = 2.4;
+    const cycle = Math.floor(time / cycleDuration);
+    const localTime = time % cycleDuration;
+    if (localTime < eventStart || localTime > eventStart + eventDuration) {
+      return { amount: 0, direction: cycle % 2 === 0 ? 1 : -1 };
     }
-
-    function maneuverAt(time) {
-      const cycleDuration = 10.5;
-      const eventStart = 6.1;
-      const eventDuration = 2.4;
-      const cycle = Math.floor(time / cycleDuration);
-      const localTime = time % cycleDuration;
-      if (localTime < eventStart || localTime > eventStart + eventDuration) {
-        return { amount: 0, direction: cycle % 2 === 0 ? 1 : -1 };
-      }
-      const progress = (localTime - eventStart) / eventDuration;
-      return {
-        amount: Math.sin(progress * Math.PI),
-        direction: cycle % 2 === 0 ? 1 : -1,
-      };
-    }
-
+    const progress = (localTime - eventStart) / eventDuration;
     return {
-      meshes,
-      lights: [],
-
-      onBeforeGather() {
-        resetMesh(airframeMesh, airframePos, airframeColor);
-        for (const canard of canardInstances) {
-          resetMesh(canard.mesh, canard.position, canard.color);
-        }
-        resetMesh(canopyMesh, canopyPos, canopyColor);
-        resetMesh(lightMesh, lightPos, lightColor);
-        resetMesh(flameMesh, flamePos, flameBaseColor);
-        resetMesh(airflowMesh, airflowPos, airflowColor);
-        flameTravel = 0;
-        airflowTravel = 0;
-      },
-
-      onGathered() {},
-
-      animate(time, dt) {
-        const maneuver = maneuverAt(time);
-        const roll = Math.sin(time * 0.46) * 0.045 + maneuver.direction * maneuver.amount * 0.16;
-        const pitch = Math.sin(time * 0.31 + 0.7) * 0.020 + maneuver.amount * 0.055;
-        const yaw = Math.sin(time * 0.22) * 0.018;
-        const bob = Math.sin(time * 0.72) * 0.035 + maneuver.amount * 0.035;
-        const lateral = maneuver.direction * maneuver.amount * 0.055;
-        for (const mesh of meshes) {
-          mesh.position.set(lateral, bob, 0);
-          mesh.rotation.set(pitch, yaw, roll);
-        }
-
-        const canardAngle = maneuver.amount * -0.018;
-        updateCanard(canardInstances[0], canardAngle);
-        updateCanard(canardInstances[1], canardAngle);
-        updateFlames(dt);
-        updateAirflow(time, dt);
-      },
-
-      onScatterStart() {},
-
-      reset() {
-        flameTravel = 0;
-        airflowTravel = 0;
-        for (const canard of canardInstances) {
-          canard.mesh.geometry.attributes.position.array.set(canard.position);
-          canard.mesh.geometry.attributes.position.needsUpdate = true;
-        }
-        flameMesh.geometry.attributes.position.array.set(flamePos);
-        flameMesh.geometry.attributes.position.needsUpdate = true;
-        flameMesh.geometry.attributes.color.array.set(flameBaseColor);
-        flameMesh.geometry.attributes.color.needsUpdate = true;
-        airflowMesh.geometry.attributes.position.array.set(airflowPos);
-        airflowMesh.geometry.attributes.position.needsUpdate = true;
-        for (const mesh of meshes) {
-          mesh.position.set(0, 0, 0);
-          mesh.rotation.set(0, 0, 0);
-          mesh.scale.set(1, 1, 1);
-        }
-      },
+      amount: Math.sin(progress * Math.PI),
+      direction: cycle % 2 === 0 ? 1 : -1,
     };
-  },
-};
+  }
+}

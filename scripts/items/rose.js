@@ -2,6 +2,9 @@
 // Extracted from main.js and adapted for the Gallery architecture.
 // Internal bud→bloom animation uses CPU-side position interpolation.
 
+import { Item } from '../Item.js';
+import { makeBackground, createRandom, mix, pushPoint } from '../bg-utils.js';
+
 // ═══════════════════════════════════════════════════════
 // COLOR PALETTE
 // ═══════════════════════════════════════════════════════
@@ -306,17 +309,57 @@ function lerpArray(out, a, b, t) {
 }
 
 // ═══════════════════════════════════════════════════════
-// ITEM DEFINITION
+// ROSE CLASS
 // ═══════════════════════════════════════════════════════
 
 const BUD_HOLD_DURATION = 2.5;
 const BLOOM_DURATION = 4.5;
 
-export default {
-  id: 'rose',
-  name: 'Rose',
+export class Rose extends Item {
+  static id = 'rose';
+  static displayName = 'Rose';
 
-  generate(ctx) {
+  // ── Background ──────────────────────────────
+
+  buildBackground(ctx) {
+    const positions = [];
+    const colors = [];
+    const random = createRandom(0x726f7365);
+    const wallDark = [0.008, 0.018, 0.012];
+    const wallLight = [0.035, 0.085, 0.040];
+    const leafDark = [0.018, 0.075, 0.025];
+    const leafLight = [0.075, 0.19, 0.065];
+
+    for (let i = 0; i < 3000; i += 1) {
+      const x = -5.5 + random() * 11;
+      const y = -0.6 + random() * 5.2;
+      const z = -6.5 + random() * 2.8;
+      pushPoint(positions, colors, x, y, z, mix(wallDark, wallLight, random()), 0.025, random);
+    }
+
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < 900; i += 1) {
+        const y = -0.8 + random() * 4.2;
+        const z = -5.8 + random() * 2.2;
+        const x = side * (2.2 + random() * 2.4);
+        pushPoint(positions, colors, x, y, z, mix(leafDark, leafLight, random()), 0.035, random);
+      }
+    }
+
+    for (let i = 0; i < 80; i += 1) {
+      pushPoint(
+        positions, colors,
+        -4.6 + random() * 9.2, 0.2 + random() * 3.4, -3.3 - random() * 1.8,
+        [0.36, 0.24, 0.08], 0.008, random,
+      );
+    }
+
+    return makeBackground(ctx, positions, colors, { pointSize: 0.026, scatterRadius: 0.8, centerY: 0.6 });
+  }
+
+  // ── Model ───────────────────────────────────
+
+  buildModel(ctx) {
     const CLR = buildPalette(ctx.$);
     const $ = ctx.$;
     const mul = ctx.mulberry32;
@@ -324,7 +367,6 @@ export default {
 
     console.time('Rose Generate');
 
-    // Generate all geometry
     const roseBudData   = generateRose(LAYERS_BUD, CLR, $, mul);
     const roseBloomData = generateRose(LAYERS_BLOOM, CLR, $, mul);
     const sepalData     = generateSepals(5, CLR, $, mul);
@@ -333,19 +375,16 @@ export default {
     const leafData      = generateLeavesOnStem(2.2, 0, CLR, $, mul);
     const leafBloomData = generateLeavesOnStem(2.2, 0.26, CLR, $, mul);
 
-    // Combine geometry
     const flowerBudPos   = [...roseBudData.positions,   ...sepalData.positions];
     const flowerBloomPos = [...roseBloomData.positions, ...sepalData.positions];
     const flowerCols     = [...roseBudData.colors,       ...sepalData.colors];
     const stemAllPos     = [...stemData.positions,       ...thornData.positions];
     const stemAllCol     = [...stemData.colors,          ...thornData.colors];
 
-    // Scatter positions (from bud form — the initial gathered state)
     const flowerScatter = ctx.scatterFrom(flowerBudPos);
     const stemScatter   = ctx.scatterFrom(stemAllPos, 2.5, 0.0);
     const leafScatter   = ctx.scatterFrom(leafData.positions, 2.8, -0.3);
 
-    // Create meshes
     const flowerMesh = ctx.createSplatMesh(flowerBudPos, flowerCols, flowerScatter, 0.016);
     const stemMesh   = ctx.createSplatMesh(stemAllPos, stemAllCol, stemScatter, 0.016);
     const leafMesh   = ctx.createSplatMesh(leafData.positions, leafData.colors, leafScatter, 0.016);
@@ -354,7 +393,6 @@ export default {
     stemMesh.renderOrder   = 5;
     leafMesh.renderOrder   = 7;
 
-    // Lights — warm rose tone
     const ambient = new THREE.AmbientLight(0x2a2a40, 2.5);
     const key     = new THREE.DirectionalLight(0xffeedd, 7);
     key.position.set(5, 7, 5);
@@ -365,127 +403,22 @@ export default {
     const warm    = new THREE.PointLight(0xff5533, 5, 2.0);
     warm.position.set(0, 0.5, 0.25);
 
-    const lights = [ambient, key, fill, rim, warm];
-
-    // Frozen bud & bloom arrays for CPU interpolation
-    const flowerBudArr   = new Float32Array(flowerBudPos);
-    const flowerBloomArr = new Float32Array(flowerBloomPos);
-    const leafBudArr     = new Float32Array(leafData.positions);
-    const leafBloomArr   = new Float32Array(leafBloomData.positions);
-
-    // Internal animation state
-    let phase = 'bud_hold';  // 'bud_hold' | 'blooming' | 'complete'
-    let phaseStartTime = 0;
-    const warmBaseIntensity = 5;
-
-    // Save scatter function + params to regenerate on re-entry
-    const _sf = ctx.scatterFrom;
-    const _flowerBudPos = flowerBudPos;
-    const _stemAllPos = stemAllPos;
-    const _leafPos = leafData.positions;
-
-    const inst = {
-      meshes: [flowerMesh, stemMesh, leafMesh],
-      lights,
-
-      // ── Called by Gallery during SWAP, before GATHER_IN ──
-      onBeforeGather() {
-        flowerMesh.geometry.attributes.position.array.set(flowerBudArr);
-        flowerMesh.geometry.attributes.position.needsUpdate = true;
-        leafMesh.geometry.attributes.position.array.set(leafBudArr);
-        leafMesh.geometry.attributes.position.needsUpdate = true;
-        // Regenerate scatter positions (overwritten by previous scatter-out)
-        flowerMesh.geometry.attributes.scatterPos.array.set(_sf(_flowerBudPos));
-        flowerMesh.geometry.attributes.scatterPos.needsUpdate = true;
-        stemMesh.geometry.attributes.scatterPos.array.set(_sf(_stemAllPos, 2.5, 0.0));
-        stemMesh.geometry.attributes.scatterPos.needsUpdate = true;
-        leafMesh.geometry.attributes.scatterPos.array.set(_sf(_leafPos, 2.8, -0.3));
-        leafMesh.geometry.attributes.scatterPos.needsUpdate = true;
-        // Reset mesh transforms
-        stemMesh.rotation.z = 0;
-        leafMesh.rotation.z = 0;
-        for (const m of inst.meshes) {
-          m.material.uniforms.uPointSize.value = 0.016;
-        }
-        phase = 'bud_hold';
-        phaseStartTime = 0;
-      },
-
-      // ── Called by Gallery after GATHER_IN completes ──
-      onGathered() {
-        phase = 'bud_hold';
-        phaseStartTime = 0;
-      },
-
-      // ── Called by Gallery each frame while active (IDLE) ──
-      animate(time, dt) {
-        const flowerPosAttr = flowerMesh.geometry.attributes.position;
-        const leafPosAttr   = leafMesh.geometry.attributes.position;
-        const flowerPosArr  = flowerPosAttr.array;
-        const leafPosArr    = leafPosAttr.array;
-
-        switch (phase) {
-          case 'bud_hold':
-            if (time >= BUD_HOLD_DURATION) {
-              phase = 'blooming';
-              phaseStartTime = time;
-            }
-            break;
-
-          case 'blooming': {
-            const elapsed = time - phaseStartTime;
-            const raw = Math.min(elapsed / BLOOM_DURATION, 1.0);
-            const p = easeInOutCubic(raw);
-
-            lerpArray(flowerPosArr, flowerBudArr, flowerBloomArr, p);
-            flowerPosAttr.needsUpdate = true;
-
-            lerpArray(leafPosArr, leafBudArr, leafBloomArr, p);
-            leafPosAttr.needsUpdate = true;
-
-            if (raw >= 1.0) {
-              phase = 'complete';
-            }
-            break;
-          }
-
-          case 'complete': {
-            // Breathing point size
-            const br = 1 + Math.sin(time*0.65)*0.018 + Math.sin(time*1.2)*0.010;
-            for (const m of inst.meshes) {
-              m.material.uniforms.uPointSize.value = 0.016 * br;
-            }
-
-            // Sway
-            const sway = Math.sin(time * 0.5) * 0.01;
-            stemMesh.rotation.z = sway;
-            leafMesh.rotation.z = sway;
-
-            // Warm light pulse
-            warm.intensity = warmBaseIntensity + Math.sin(time * 0.85) * 0.8;
-            break;
-          }
-        }
-      },
-
-      // ── Called by Gallery on Space key ──
-      reset() {
-        flowerMesh.geometry.attributes.position.array.set(flowerBudArr);
-        flowerMesh.geometry.attributes.position.needsUpdate = true;
-        leafMesh.geometry.attributes.position.array.set(leafBudArr);
-        leafMesh.geometry.attributes.position.needsUpdate = true;
-
-        for (const m of inst.meshes) {
-          m.material.uniforms.uPointSize.value = 0.016;
-        }
-
-        phase = 'bud_hold';
-        phaseStartTime = 0;
-      },
-
-      // No-op: scatter positions are computed dynamically by Gallery
-      onScatterStart() {},
-    };
+    // Store instance state for lifecycle methods
+    this._flowerMesh = flowerMesh;
+    this._stemMesh   = stemMesh;
+    this._leafMesh   = leafMesh;
+    this._warm       = warm;
+    this._flowerBudArr   = new Float32Array(flowerBudPos);
+    this._flowerBloomArr = new Float32Array(flowerBloomPos);
+    this._leafBudArr     = new Float32Array(leafData.positions);
+    this._leafBloomArr   = new Float32Array(leafBloomData.positions);
+    this._sf             = ctx.scatterFrom;
+    this._flowerBudPos   = flowerBudPos;
+    this._stemAllPos     = stemAllPos;
+    this._leafPos        = leafData.positions;
+    this._warmBaseIntensity = 5;
+    this._phase          = 'bud_hold';
+    this._phaseStartTime = 0;
 
     console.timeEnd('Rose Generate');
 
@@ -494,6 +427,93 @@ export default {
     );
     console.log(`Rose splats: ${totalSplats.toLocaleString()}`);
 
-    return inst;
-  },
-};
+    return {
+      meshes: [flowerMesh, stemMesh, leafMesh],
+      lights: [ambient, key, fill, rim, warm],
+    };
+  }
+
+  // ── Lifecycle ───────────────────────────────
+
+  onBeforeGather() {
+    this._flowerMesh.geometry.attributes.position.array.set(this._flowerBudArr);
+    this._flowerMesh.geometry.attributes.position.needsUpdate = true;
+    this._leafMesh.geometry.attributes.position.array.set(this._leafBudArr);
+    this._leafMesh.geometry.attributes.position.needsUpdate = true;
+    this._flowerMesh.geometry.attributes.scatterPos.array.set(this._sf(this._flowerBudPos));
+    this._flowerMesh.geometry.attributes.scatterPos.needsUpdate = true;
+    this._stemMesh.geometry.attributes.scatterPos.array.set(this._sf(this._stemAllPos, 2.5, 0.0));
+    this._stemMesh.geometry.attributes.scatterPos.needsUpdate = true;
+    this._leafMesh.geometry.attributes.scatterPos.array.set(this._sf(this._leafPos, 2.8, -0.3));
+    this._leafMesh.geometry.attributes.scatterPos.needsUpdate = true;
+    this._stemMesh.rotation.z = 0;
+    this._leafMesh.rotation.z = 0;
+    for (const m of this.meshes) {
+      m.material.uniforms.uPointSize.value = 0.016;
+    }
+    this._phase = 'bud_hold';
+    this._phaseStartTime = 0;
+  }
+
+  onGathered() {
+    this._phase = 'bud_hold';
+    this._phaseStartTime = 0;
+  }
+
+  animate(time, dt) {
+    const flowerPosAttr = this._flowerMesh.geometry.attributes.position;
+    const leafPosAttr   = this._leafMesh.geometry.attributes.position;
+    const flowerPosArr  = flowerPosAttr.array;
+    const leafPosArr    = leafPosAttr.array;
+
+    switch (this._phase) {
+      case 'bud_hold':
+        if (time >= BUD_HOLD_DURATION) {
+          this._phase = 'blooming';
+          this._phaseStartTime = time;
+        }
+        break;
+
+      case 'blooming': {
+        const elapsed = time - this._phaseStartTime;
+        const raw = Math.min(elapsed / BLOOM_DURATION, 1.0);
+        const p = easeInOutCubic(raw);
+
+        lerpArray(flowerPosArr, this._flowerBudArr, this._flowerBloomArr, p);
+        flowerPosAttr.needsUpdate = true;
+
+        lerpArray(leafPosArr, this._leafBudArr, this._leafBloomArr, p);
+        leafPosAttr.needsUpdate = true;
+
+        if (raw >= 1.0) {
+          this._phase = 'complete';
+        }
+        break;
+      }
+
+      case 'complete': {
+        const br = 1 + Math.sin(time * 0.65) * 0.018 + Math.sin(time * 1.2) * 0.010;
+        for (const m of this.meshes) {
+          m.material.uniforms.uPointSize.value = 0.016 * br;
+        }
+        const sway = Math.sin(time * 0.5) * 0.01;
+        this._stemMesh.rotation.z = sway;
+        this._leafMesh.rotation.z = sway;
+        this._warm.intensity = this._warmBaseIntensity + Math.sin(time * 0.85) * 0.8;
+        break;
+      }
+    }
+  }
+
+  reset() {
+    this._flowerMesh.geometry.attributes.position.array.set(this._flowerBudArr);
+    this._flowerMesh.geometry.attributes.position.needsUpdate = true;
+    this._leafMesh.geometry.attributes.position.array.set(this._leafBudArr);
+    this._leafMesh.geometry.attributes.position.needsUpdate = true;
+    for (const m of this.meshes) {
+      m.material.uniforms.uPointSize.value = 0.016;
+    }
+    this._phase = 'bud_hold';
+    this._phaseStartTime = 0;
+  }
+}

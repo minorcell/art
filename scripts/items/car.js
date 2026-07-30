@@ -1,5 +1,110 @@
-// Xiaomi SU7 Max in Gulf Blue. The model is built as a deterministic point
-// cloud, with X as width, Y as height, Z as length, and the nose facing +Z.
+// Car model built as a deterministic point cloud, with X as width, Y as height,
+// Z as length, and the nose facing +Z.
+
+import { Item } from '../Item.js';
+import { makeBackground, createRandom, mix, pushPoint, addCloud } from '../bg-utils.js';
+
+// ── Drive motion parameters ──
+
+const DRIVE_DIRECTION = 1;
+const MAX_SPEED = 2.4;
+const WHEEL_RADIUS = 0.282;
+const ACCELERATION_TIME = 10.0;
+
+function carMotionAt(time) {
+  const progress = Math.min(1, Math.max(0, time / ACCELERATION_TIME));
+  const normalizedSpeed = progress * progress;
+  return {
+    progress,
+    normalizedSpeed,
+    speed: normalizedSpeed * MAX_SPEED,
+    assembly: 1,
+  };
+}
+
+function createCarBackground(ctx) {
+  const positions = [];
+  const colors = [];
+  const random = createRandom(0x737537);
+  const asphalt = [0.035, 0.055, 0.048];
+  const asphaltLight = [0.12, 0.16, 0.12];
+  const grass = [0.04, 0.16, 0.055];
+  const grassLight = [0.20, 0.38, 0.10];
+
+  for (let i = 0; i < 3600; i += 1) {
+    const z = -8 + random() * 14;
+    const x = -2.6 + random() * 5.2;
+    pushPoint(positions, colors, x, -0.20 + random() * 0.07, z, mix(asphalt, asphaltLight, random() * 0.45), 0.02, random);
+  }
+
+  for (let z = -7.5; z < 5.5; z += 0.65) {
+    for (let i = 0; i < 25; i += 1) {
+      pushPoint(positions, colors, -0.06 + (random() - 0.5) * 0.06, -0.105, z + (random() - 0.5) * 0.12, [0.60, 0.58, 0.30], 0.008, random);
+    }
+  }
+
+  for (const side of [-1, 1]) {
+    for (let i = 0; i < 1900; i += 1) {
+      const x = side * (2.8 + random() * 2.5);
+      const y = -0.12 + random() * 0.75;
+      const z = -7.5 + random() * 13;
+      pushPoint(positions, colors, x, y, z, mix(grass, grassLight, random()), 0.055, random);
+    }
+
+    for (let i = 0; i < 12; i += 1) {
+      const x = side * (3.2 + random() * 1.6);
+      const z = -5.8 + random() * 10.5;
+      addCloud(positions, colors, random, [x, 0.75 + random() * 0.75, z], [0.45, 0.70, 0.45], 160, grass, grassLight);
+      for (let j = 0; j < 100; j += 1) {
+        pushPoint(positions, colors, x + (random() - 0.5) * 0.08, 0.1 + random() * 1.2, z + (random() - 0.5) * 0.08, [0.14, 0.10, 0.045], 0.018, random);
+      }
+    }
+
+    for (let z = -7.2; z < 5.2; z += 2.1) {
+      const x = side * 2.72;
+      for (let i = 0; i < 100; i += 1) {
+        const y = -0.08 + (i / 100) * 1.85;
+        pushPoint(positions, colors, x, y, z + (random() - 0.5) * 0.04, [0.20, 0.22, 0.15], 0.012, random);
+      }
+      addCloud(positions, colors, random, [side * 2.62, 1.72, z], [0.20, 0.16, 0.20], 55, [0.10, 0.11, 0.08], [0.52, 0.49, 0.26]);
+    }
+  }
+
+  let roadTravel = 0;
+  let roadTimeOrigin = 0;
+  let lastRoadTime = 0;
+  const loopLength = 14;
+  return makeBackground(ctx, positions, colors, {
+    pointSize: 0.022,
+    scatterRadius: 0.8,
+    centerY: 0.1,
+    repeat: 3,
+    repeatDistance: loopLength,
+    animateAll(meshes, time, dt) {
+      lastRoadTime = time;
+      const motion = carMotionAt(Math.max(0, time - roadTimeOrigin));
+      roadTravel = (roadTravel + dt * motion.speed) % loopLength;
+      meshes.forEach((mesh, index) => {
+        let z = (index - 1) * loopLength - DRIVE_DIRECTION * roadTravel;
+        if (z < -loopLength) z += loopLength * 2;
+        mesh.position.z = z;
+      });
+    },
+    resetAll() {
+      roadTravel = 0;
+      roadTimeOrigin = lastRoadTime;
+    },
+    prepare() {
+      roadTravel = 0;
+      roadTimeOrigin = 0;
+      lastRoadTime = 0;
+    },
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+// CAR MODEL
+// ═══════════════════════════════════════════════════════
 
 const COLOR = {
   body:       [0.035, 0.42, 0.66],
@@ -48,17 +153,6 @@ const CABIN_PROFILE = [
 const AXLES = [-1.05, 1.03];
 const WHEEL_Y = 0.27;
 const TAU = Math.PI * 2;
-
-function createRandom(seed) {
-  let state = seed >>> 0;
-  return () => {
-    state += 0x6d2b79f5;
-    let value = state;
-    value = Math.imul(value ^ (value >>> 15), value | 1);
-    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
-    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 function lerp(a, b, t) {
   return a + (b - a) * t;
@@ -770,31 +864,6 @@ function buildUnderbody(cloud) {
   }
 }
 
-function buildWind(cloud) {
-  const { random, point } = cloud;
-  for (let trail = 0; trail < 360; trail += 1) {
-    const side = random() < 0.5 ? -1 : 1;
-    const x = side * lerp(0.72, 1.85, Math.pow(random(), 0.75));
-    const y = lerp(-0.02, 1.42, random());
-    const startZ = lerp(-3.8, 3.8, random());
-    const length = lerp(0.10, 0.42, random());
-    const points = 5 + Math.floor(random() * 5);
-    const color = random() < 0.22 ? COLOR.white : COLOR.bodyLight;
-
-    for (let i = 0; i < points; i += 1) {
-      const t = i / Math.max(1, points - 1);
-      point(
-        x + (random() - 0.5) * 0.012,
-        y + (random() - 0.5) * 0.012,
-        startZ - length * t,
-        color,
-        0.18,
-        0.002,
-      );
-    }
-  }
-}
-
 function toFloat32(values) {
   return values instanceof Float32Array ? values : new Float32Array(values);
 }
@@ -809,14 +878,21 @@ function localize(values, center) {
   return local;
 }
 
-export default {
-  id: 'su7',
-  name: 'Xiaomi SU7',
+export class Car extends Item {
+  static id = 'car';
+  static displayName = 'Car';
 
-  generate(ctx) {
+  // ── Background ──────────────────────────────
+
+  buildBackground(ctx) {
+    return createCarBackground(ctx);
+  }
+
+  // ── Model ───────────────────────────────────
+
+  buildModel(ctx) {
     const solid = createCloud(0x53553701);
     const lamps = createCloud(0x53553702);
-    const wind = createCloud(0x53553703);
 
     buildBody(solid);
     buildCabin(solid);
@@ -825,172 +901,131 @@ export default {
     buildRear(solid, lamps);
     buildSideDetails(solid, lamps);
     buildUnderbody(solid);
-    buildWind(wind);
 
     const solidPos = toFloat32(solid.positions);
     const solidColor = toFloat32(solid.colors);
     const lampPos = toFloat32(lamps.positions);
     const lampColor = toFloat32(lamps.colors);
-    const windPos = toFloat32(wind.positions);
-    const windBaseColor = toFloat32(wind.colors);
-    const windDimColor = new Float32Array(windBaseColor.length);
-    for (let i = 0; i < windDimColor.length; i += 1) {
-      windDimColor[i] = windBaseColor[i] * 0.025;
-    }
 
     const solidMesh = ctx.createSplatMesh(
-      solidPos,
-      solidColor,
-      ctx.scatterFrom(solidPos, 4.0, 0.45),
-      0.0068,
-    );
+      solidPos, solidColor, ctx.scatterFrom(solidPos, 4.0, 0.45), 0.0068);
     solidMesh.renderOrder = 10;
 
     const wheelInstances = wheels.map(({ cloud, center }) => {
       const position = localize(toFloat32(cloud.positions), center);
       const color = toFloat32(cloud.colors);
       const mesh = ctx.createSplatMesh(
-        position,
-        color,
-        ctx.scatterFrom(position, 2.2, 0),
-        0.0072,
-      );
+        position, color, ctx.scatterFrom(position, 2.2, 0), 0.0072);
       mesh.position.set(center[0], center[1], center[2]);
       mesh.renderOrder = 10;
       return { mesh, position, color, center };
     });
 
     const lampMesh = ctx.createSplatMesh(
-      lampPos,
-      lampColor,
-      ctx.scatterFrom(lampPos, 4.0, 0.45),
-      0.0062,
-    );
+      lampPos, lampColor, ctx.scatterFrom(lampPos, 4.0, 0.45), 0.0062);
     lampMesh.renderOrder = 11;
     lampMesh.material.depthWrite = false;
 
-    const windMesh = ctx.createSplatMesh(
-      windPos,
-      windDimColor,
-      ctx.scatterFrom(windPos, 4.5, 0.55),
-      0.0058,
-    );
-    windMesh.renderOrder = 8;
-    windMesh.material.depthWrite = false;
-
     const baseLampColor = new Float32Array(lampColor);
-    const carMeshes = [solidMesh, ...wheelInstances.map(({ mesh }) => mesh), lampMesh];
-    let lastPulse = -1;
-    let wheelAngle = 0;
-    let windTravel = 0;
-    let currentTime = 0;
-    let cycleOrigin = 0;
 
-    function resetMesh(mesh, position, color, center = [0, 0, 0], scatterRadius = 4.0, scatterY = 0.45) {
-      mesh.geometry.attributes.position.array.set(position);
-      mesh.geometry.attributes.position.needsUpdate = true;
-      mesh.geometry.attributes.scatterPos.array.set(ctx.scatterFrom(position, scatterRadius, scatterY));
-      mesh.geometry.attributes.scatterPos.needsUpdate = true;
-      mesh.geometry.attributes.color.array.set(color);
-      mesh.geometry.attributes.color.needsUpdate = true;
-      mesh.position.set(center[0], center[1], center[2]);
-      mesh.rotation.set(0, 0, 0);
-      mesh.scale.set(1, 1, 1);
-    }
-
-    function motionAt(time) {
-      const timeToTopSpeed = 10.0;
-      const progress = Math.min(1, time / timeToTopSpeed);
-      return { speed: progress * progress, assembly: 1 };
-    }
-
-    function updateWind(time, dt, speed) {
-      windTravel = (windTravel + dt * (0.08 + speed * 6.8)) % 7.6;
-      const positions = windMesh.geometry.attributes.position.array;
-      for (let i = 0; i < positions.length; i += 3) {
-        const shiftedZ = windPos[i + 2] - windTravel;
-        positions[i] = windPos[i] + Math.sin(time * 3.2 + i * 0.017) * speed * 0.008;
-        positions[i + 1] = windPos[i + 1];
-        positions[i + 2] = ((shiftedZ + 3.8) % 7.6 + 7.6) % 7.6 - 3.8;
-      }
-      windMesh.geometry.attributes.position.needsUpdate = true;
-    }
+    // Store instance state
+    this._sf = ctx.scatterFrom;
+    this._solidMesh = solidMesh;
+    this._lampMesh = lampMesh;
+    this._wheelInstances = wheelInstances;
+    this._solidPos = solidPos;
+    this._solidColor = solidColor;
+    this._lampPos = lampPos;
+    this._baseLampColor = baseLampColor;
+    this._lastPulse = -1;
+    this._wheelAngle = 0;
+    this._currentTime = 0;
+    this._cycleOrigin = 0;
 
     return {
-      meshes: [...carMeshes, windMesh],
+      meshes: [solidMesh, ...wheelInstances.map(({ mesh }) => mesh), lampMesh],
       lights: [],
-
-      onBeforeGather() {
-        resetMesh(solidMesh, solidPos, solidColor);
-        for (const wheel of wheelInstances) {
-          resetMesh(wheel.mesh, wheel.position, wheel.color, wheel.center, 2.2, 0);
-        }
-        resetMesh(lampMesh, lampPos, baseLampColor);
-        resetMesh(windMesh, windPos, windDimColor, [0, 0, 0], 4.5, 0.55);
-        lastPulse = -1;
-        wheelAngle = 0;
-        windTravel = 0;
-        currentTime = 0;
-        cycleOrigin = 0;
-      },
-
-      onGathered() {},
-
-      animate(time, dt) {
-        currentTime = time;
-        const motion = motionAt(Math.max(0, time - cycleOrigin));
-        wheelAngle += dt * (0.35 + motion.speed * 13.5);
-        for (const wheel of wheelInstances) {
-          wheel.mesh.rotation.x = wheelAngle;
-        }
-        for (const mesh of carMeshes) {
-          mesh.material.uniforms.uProgress.value = motion.assembly;
-        }
-        updateWind(time, dt, motion.speed);
-
-        const pulse = Math.floor(time * 20);
-        if (pulse === lastPulse) return;
-        lastPulse = pulse;
-        const factor = 0.91 + Math.sin(time * 2.2) * 0.09;
-        const colors = lampMesh.geometry.attributes.color.array;
-        for (let i = 0; i < colors.length; i += 1) {
-          colors[i] = Math.min(1, baseLampColor[i] * factor);
-        }
-        lampMesh.geometry.attributes.color.needsUpdate = true;
-
-        const windColors = windMesh.geometry.attributes.color.array;
-        const windFactor = 0.025 + motion.speed * (0.72 + Math.sin(time * 7.0) * 0.08);
-        for (let i = 0; i < windColors.length; i += 1) {
-          windColors[i] = Math.min(1, windBaseColor[i] * windFactor);
-        }
-        windMesh.geometry.attributes.color.needsUpdate = true;
-      },
-
-      onScatterStart() {},
-
-      reset() {
-        cycleOrigin = currentTime;
-        wheelAngle = 0;
-        windTravel = 0;
-        solidMesh.position.set(0, 0, 0);
-        solidMesh.rotation.set(0, 0, 0);
-        solidMesh.scale.set(1, 1, 1);
-        for (const wheel of wheelInstances) {
-          wheel.mesh.position.set(wheel.center[0], wheel.center[1], wheel.center[2]);
-          wheel.mesh.rotation.set(0, 0, 0);
-          wheel.mesh.scale.set(1, 1, 1);
-        }
-        lampMesh.position.set(0, 0, 0);
-        lampMesh.rotation.set(0, 0, 0);
-        lampMesh.scale.set(1, 1, 1);
-        windMesh.geometry.attributes.position.array.set(windPos);
-        windMesh.geometry.attributes.position.needsUpdate = true;
-        windMesh.geometry.attributes.color.array.set(windDimColor);
-        windMesh.geometry.attributes.color.needsUpdate = true;
-        for (const mesh of carMeshes) {
-          mesh.material.uniforms.uProgress.value = 1;
-        }
-      },
     };
-  },
-};
+  }
+
+  // ── Lifecycle ───────────────────────────────
+
+  onBeforeGather() {
+    this._resetMesh(this._solidMesh, this._solidPos, this._solidColor);
+    for (const wheel of this._wheelInstances) {
+      this._resetMesh(wheel.mesh, wheel.position, wheel.color, wheel.center, 2.2, 0);
+    }
+    this._resetMesh(this._lampMesh, this._lampPos, this._baseLampColor);
+    this._lastPulse = -1;
+    this._wheelAngle = 0;
+    this._currentTime = 0;
+    this._cycleOrigin = 0;
+  }
+
+  animate(time, dt) {
+    this._currentTime = time;
+    const motion = carMotionAt(Math.max(0, time - this._cycleOrigin));
+    this._wheelAngle += DRIVE_DIRECTION * dt * motion.speed / WHEEL_RADIUS;
+    for (const wheel of this._wheelInstances) {
+      wheel.mesh.rotation.x = this._wheelAngle;
+    }
+
+    const laneShift = Math.sin(time * 0.24) * (0.018 + motion.normalizedSpeed * 0.028);
+    const roadShift = Math.sin(time * 0.42) * (0.035 + motion.normalizedSpeed * 0.16);
+    const suspension = Math.sin(time * 4.2) * (0.003 + motion.normalizedSpeed * 0.009);
+    this._solidMesh.position.set(laneShift, suspension, roadShift);
+    this._lampMesh.position.set(laneShift, suspension, roadShift);
+    for (const wheel of this._wheelInstances) {
+      wheel.mesh.position.set(
+        wheel.center[0] + laneShift,
+        wheel.center[1] + suspension,
+        wheel.center[2] + roadShift,
+      );
+    }
+    for (const mesh of this.meshes) {
+      mesh.material.uniforms.uProgress.value = motion.assembly;
+    }
+    const pulse = Math.floor(time * 20);
+    if (pulse === this._lastPulse) return;
+    this._lastPulse = pulse;
+    const factor = 0.91 + Math.sin(time * 2.2) * 0.09;
+    const colors = this._lampMesh.geometry.attributes.color.array;
+    for (let i = 0; i < colors.length; i += 1) {
+      colors[i] = Math.min(1, this._baseLampColor[i] * factor);
+    }
+    this._lampMesh.geometry.attributes.color.needsUpdate = true;
+  }
+
+  reset() {
+    this._cycleOrigin = this._currentTime;
+    this._wheelAngle = 0;
+    this._solidMesh.position.set(0, 0, 0);
+    this._solidMesh.rotation.set(0, 0, 0);
+    this._solidMesh.scale.set(1, 1, 1);
+    for (const wheel of this._wheelInstances) {
+      wheel.mesh.position.set(wheel.center[0], wheel.center[1], wheel.center[2]);
+      wheel.mesh.rotation.set(0, 0, 0);
+      wheel.mesh.scale.set(1, 1, 1);
+    }
+    this._lampMesh.position.set(0, 0, 0);
+    this._lampMesh.rotation.set(0, 0, 0);
+    this._lampMesh.scale.set(1, 1, 1);
+    for (const mesh of this.meshes) {
+      mesh.material.uniforms.uProgress.value = 1;
+    }
+  }
+
+  // ── Internal ────────────────────────────────
+
+  _resetMesh(mesh, position, color, center = [0, 0, 0], scatterRadius = 4.0, scatterY = 0.45) {
+    mesh.geometry.attributes.position.array.set(position);
+    mesh.geometry.attributes.position.needsUpdate = true;
+    mesh.geometry.attributes.scatterPos.array.set(this._sf(position, scatterRadius, scatterY));
+    mesh.geometry.attributes.scatterPos.needsUpdate = true;
+    mesh.geometry.attributes.color.array.set(color);
+    mesh.geometry.attributes.color.needsUpdate = true;
+    mesh.position.set(center[0], center[1], center[2]);
+    mesh.rotation.set(0, 0, 0);
+    mesh.scale.set(1, 1, 1);
+  }
+}
