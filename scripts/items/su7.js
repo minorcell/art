@@ -864,7 +864,7 @@ export default {
       lampPos,
       lampColor,
       ctx.scatterFrom(lampPos, 4.0, 0.45),
-      0.009,
+      0.0062,
     );
     lampMesh.renderOrder = 11;
     lampMesh.material.depthWrite = false;
@@ -899,24 +899,9 @@ export default {
     }
 
     function motionAt(time) {
-      const accelerateDuration = 10.0;
-      const scatterDuration = 2.0;
-      const gatherDuration = 1.8;
-      const cycleDuration = accelerateDuration + scatterDuration + gatherDuration;
-      const cycleTime = time % cycleDuration;
-
-      if (cycleTime < accelerateDuration) {
-        const t = cycleTime / accelerateDuration;
-        return { speed: t * t, assembly: 1 };
-      }
-      if (cycleTime < accelerateDuration + scatterDuration) {
-        const t = (cycleTime - accelerateDuration) / scatterDuration;
-        return { speed: 1, assembly: 1 - t * t * t };
-      }
-
-      const t = (cycleTime - accelerateDuration - scatterDuration) / gatherDuration;
-      const eased = 1 - Math.pow(1 - t, 3);
-      return { speed: 1 - eased, assembly: eased };
+      const timeToTopSpeed = 10.0;
+      const progress = Math.min(1, time / timeToTopSpeed);
+      return { speed: progress * progress, assembly: 1 };
     }
 
     function updateWind(time, dt, speed) {

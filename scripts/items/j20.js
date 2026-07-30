@@ -636,6 +636,7 @@ function toFloat32(values) {
 export default {
   id: 'j20',
   name: 'J-20 Fighter',
+  autoRotate: false,
 
   generate(ctx) {
     const airframe = createCloud(0x4a323001);

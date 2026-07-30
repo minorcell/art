@@ -194,6 +194,7 @@ export class Gallery {
     this.controls.autoRotate = true;
     this.controls.autoRotateSpeed = 0.5;
     this.controls.update();
+    this._autoRotateOverride = null;
 
     // ── Shared Resources ──
     this.gTex = createGaussianTex();
@@ -232,30 +233,159 @@ export class Gallery {
 
   _createItemBar() {
     this._barEl = document.createElement('nav');
-    this._barEl.className = 'item-bar';
+    this._barEl.className = 'item-wheel';
     this._barEl.id = 'item-bar';
+    this._barEl.setAttribute('aria-label', '展品轮盘');
     document.body.appendChild(this._barEl);
 
-    this._barEl.addEventListener('click', (e) => {
-      const btn = e.target.closest('.item-btn');
-      if (!btn) return;
-      const id = btn.dataset.item;
-      if (id && id !== this._currentId) {
-        this.switchTo(id);
-      }
+    this._barEl.addEventListener('wheel', (e) => {
+      if (this._phase !== Phase.IDLE || this._items.size < 2) return;
+      const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      if (Math.abs(delta) < 4) return;
+      e.preventDefault();
+
+      const deltaScale = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? window.innerHeight : 1;
+      const step = window.matchMedia('(max-width: 767px)').matches ? 84 : 56;
+      const movement = Math.max(-1.2, Math.min(1.2, delta * deltaScale / step));
+      this._wheelPosition += movement;
+      this._barEl.classList.add('is-dragging');
+      this._updateWheel();
+
+      clearTimeout(this._wheelSnapTimer);
+      this._wheelSnapTimer = setTimeout(() => this._snapWheel(), 120);
+    }, { passive: false });
+
+    this._barEl.addEventListener('pointerdown', (e) => {
+      if (this._phase !== Phase.IDLE || this._items.size < 2) return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+
+      clearTimeout(this._wheelSnapTimer);
+      this._barEl.setPointerCapture(e.pointerId);
+      this._barEl.classList.add('is-dragging');
+      this._wheelPointerStart = {
+        pointerId: e.pointerId,
+        x: e.clientX,
+        y: e.clientY,
+        position: this._wheelPosition,
+      };
     });
+
+    this._barEl.addEventListener('pointermove', (e) => {
+      const start = this._wheelPointerStart;
+      if (!start || start.pointerId !== e.pointerId) return;
+      e.preventDefault();
+
+      const dx = e.clientX - start.x;
+      const dy = e.clientY - start.y;
+      const isHorizontal = window.matchMedia('(max-width: 767px)').matches;
+      const distance = isHorizontal ? dx : dy;
+      const step = isHorizontal ? 84 : 56;
+      this._wheelPosition = start.position - distance / step;
+      this._updateWheel();
+    });
+
+    const finishDrag = (e) => {
+      const start = this._wheelPointerStart;
+      if (!start || start.pointerId !== e.pointerId) return;
+      this._wheelPointerStart = null;
+      this._snapWheel();
+    };
+    this._barEl.addEventListener('pointerup', finishDrag);
+    this._barEl.addEventListener('pointercancel', finishDrag);
   }
 
   _renderItemBar() {
-    this._barEl.innerHTML = '';
-    for (const [id, def] of this._items) {
-      const btn = document.createElement('button');
-      btn.className = 'item-btn';
-      btn.dataset.item = id;
-      if (id === this._currentId) btn.classList.add('active');
-      btn.textContent = def.name || id;
-      this._barEl.appendChild(btn);
+    if (!this._wheelTrackEl) {
+      const viewport = document.createElement('div');
+      viewport.className = 'item-wheel-viewport';
+      viewport.tabIndex = 0;
+      viewport.setAttribute('role', 'listbox');
+      viewport.setAttribute('aria-label', '旋转选择展品');
+      this._wheelViewportEl = viewport;
+      this._wheelTrackEl = document.createElement('div');
+      this._wheelTrackEl.className = 'item-wheel-track';
+      viewport.appendChild(this._wheelTrackEl);
+
+      this._wheelCountEl = document.createElement('span');
+      this._wheelCountEl.className = 'wheel-count';
+      this._wheelCountEl.setAttribute('aria-live', 'polite');
+      this._barEl.append(viewport, this._wheelCountEl);
     }
+
+    this._wheelTrackEl.innerHTML = '';
+    let index = 0;
+    for (const [id, def] of this._items) {
+      const item = document.createElement('span');
+      item.className = 'item-wheel-item';
+      item.id = `item-wheel-option-${index}`;
+      item.dataset.item = id;
+      item.setAttribute('role', 'option');
+      item.textContent = def.name || id;
+      item.title = def.name || id;
+      this._wheelTrackEl.appendChild(item);
+      index += 1;
+    }
+
+    const currentIndex = [...this._items.keys()].indexOf(this._currentId);
+    if (currentIndex >= 0) this._wheelPosition = currentIndex;
+    if (!Number.isFinite(this._wheelPosition)) this._wheelPosition = 0;
+    this._updateWheel();
+  }
+
+  _moveWheel(delta) {
+    if (this._phase !== Phase.IDLE) return;
+    if (this._items.size < 2) return;
+    this._wheelPosition = Math.round(this._wheelPosition) + delta;
+    this._updateWheel();
+    this._snapWheel();
+  }
+
+  _snapWheel() {
+    clearTimeout(this._wheelSnapTimer);
+    this._wheelSnapTimer = null;
+    this._barEl.classList.remove('is-dragging');
+
+    const ids = [...this._items.keys()];
+    if (!ids.length) return;
+    this._wheelPosition = Math.round(this._wheelPosition);
+    this._updateWheel();
+
+    const selectedIndex = ((this._wheelPosition % ids.length) + ids.length) % ids.length;
+    const selectedId = ids[selectedIndex];
+    if (selectedId !== this._currentId) this.switchTo(selectedId);
+  }
+
+  _updateWheel() {
+    if (!this._wheelTrackEl) return;
+    const ids = [...this._items.keys()];
+    const total = ids.length;
+    if (!total) {
+      this._wheelCountEl.textContent = '';
+      return;
+    }
+
+    const centeredIndex = ((Math.round(this._wheelPosition) % total) + total) % total;
+    this._wheelCountEl.textContent = `${String(centeredIndex + 1).padStart(2, '0')} / ${String(total).padStart(2, '0')}`;
+    this._wheelViewportEl.setAttribute('aria-activedescendant', `item-wheel-option-${centeredIndex}`);
+
+    [...this._wheelTrackEl.children].forEach((item, index) => {
+      const rawDistance = index - this._wheelPosition;
+      const distance = ((rawDistance + total / 2) % total + total) % total - total / 2;
+
+      const absDistance = Math.abs(distance);
+      const angle = distance * Math.PI / 5.3;
+      const scale = Math.max(0.68, 1 - absDistance * 0.13);
+      const opacity = Math.max(0, 1 - absDistance * 0.32);
+      item.style.setProperty('--wheel-offset-x', `${Math.sin(angle) * 158}px`);
+      item.style.setProperty('--wheel-offset-y', `${Math.sin(angle) * 96}px`);
+      item.style.setProperty('--wheel-scale', scale);
+      item.style.setProperty('--wheel-angle', `${distance * 34}deg`);
+      item.style.setProperty('--wheel-opacity', opacity);
+      item.style.zIndex = String(10 - Math.round(absDistance));
+      item.classList.toggle('is-centered', index === centeredIndex);
+      item.classList.toggle('is-hidden', absDistance > 2.6);
+      item.setAttribute('aria-selected', index === centeredIndex ? 'true' : 'false');
+    });
   }
 
   // ─────────────────────────────────────────────
@@ -276,6 +406,7 @@ export class Gallery {
     // Load first item with instant gather (no scatter-out)
     this._loadItemInstance(firstId);
     this._currentId = firstId;
+    this._applyItemControlPreferences(firstId);
     this._activeInstance = this._instances.get(firstId);
     this._phase = Phase.GATHER_IN;
     this._transition = {
@@ -350,7 +481,24 @@ export class Gallery {
     }
 
     this._currentId = itemId;
-    this._renderItemBar();
+    this._applyItemControlPreferences(itemId);
+    this._updateWheel();
+  }
+
+  _applyItemControlPreferences(itemId) {
+    const autoRotateDisabled = this._items.get(itemId)?.autoRotate === false;
+    if (autoRotateDisabled) {
+      if (!this._autoRotateOverride) {
+        this._autoRotateOverride = { restoreValue: this.controls.autoRotate };
+      }
+      this.controls.autoRotate = false;
+      return;
+    }
+
+    if (this._autoRotateOverride) {
+      this.controls.autoRotate = this._autoRotateOverride.restoreValue;
+      this._autoRotateOverride = null;
+    }
   }
 
   _loadItemInstance(itemId) {
@@ -517,6 +665,16 @@ export class Gallery {
 
   _onKeyDown(e) {
     switch (e.key) {
+      case 'ArrowLeft':
+      case 'ArrowUp':
+        e.preventDefault();
+        this._moveWheel(-1);
+        break;
+      case 'ArrowRight':
+      case 'ArrowDown':
+        e.preventDefault();
+        this._moveWheel(1);
+        break;
       case ' ':
         e.preventDefault();
         if (this._activeInstance && this._activeInstance.reset) {
@@ -539,6 +697,7 @@ export class Gallery {
         this.controls.update();
         break;
       case 'a':
+        if (this._items.get(this._currentId)?.autoRotate === false) break;
         this.controls.autoRotate = !this.controls.autoRotate;
         break;
     }
